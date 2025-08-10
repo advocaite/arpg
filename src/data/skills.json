@@ -1,0 +1,8 @@
+{
+    "skills": [
+        { "id": "skill_ring", "name": "Ring Shot", "type": "projectile", "params": { "pattern": "ring", "count": 12, "speed": 280, "decayMs": 3000 } },
+        { "id": "skill_shoot", "name": "Shoot", "type": "projectile", "params": { "pattern": "single", "speed": 320, "decayMs": 2000 } },
+        { "id": "skill_dash", "name": "Dash Strike", "type": "dash", "cooldownMs": 1400, "params": { "distance": 200, "duration": 140 } },
+        { "id": "skill_mine", "name": "Landmine", "type": "projectile", "params": { "pattern": "mine", "fuseMs": 1200, "radius": 80, "damage": 10 } }
+    ]
+}

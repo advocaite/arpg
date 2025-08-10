@@ -1,0 +1,15 @@
+{
+    "id": "arena_world",
+    "name": "Arena (World)",
+    "width": 1600,
+    "height": 1200,
+    "portals": [
+        { "id": "portal_town", "name": "Return to Town", "destinationScene": "World", "destinationId": "town", "x": 120, "y": 100 }
+    ],
+    "npcs": [],
+    "obstacles": [],
+    "checkpoints": [{ "x": 800, "y": 600, "name": "Arena Checkpoint" }],
+    "spawners": [
+        { "monsterId": "chaser_basic", "everyMs": 1200, "count": 2, "limit": 40, "startDelayMs": 500 }
+    ]
+}

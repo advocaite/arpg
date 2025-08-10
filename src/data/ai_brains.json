@@ -1,0 +1,9 @@
+{
+    "brains": [
+        { "id": "brain_chaser", "behavior": "chaser", "params": { "chaseMode": "always" } },
+        { "id": "brain_shooter", "behavior": "shooter", "params": { "chaseMode": "onSight", "sightRange": 420, "telegraphMs": 300, "cooldownMs": 900 } },
+        { "id": "brain_charger", "behavior": "chaser", "params": { "chaseMode": "onSight", "sightRange": 360, "cooldownMs": 1400 } },
+        { "id": "brain_miner", "behavior": "shooter", "params": { "chaseMode": "onSight", "sightRange": 380, "telegraphMs": 400, "cooldownMs": 1600 } },
+        { "id": "brain_boss_ring", "behavior": "boss", "params": { "skill": "ring", "cooldownMs": 1600 } }
+    ]
+}

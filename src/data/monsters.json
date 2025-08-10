@@ -1,0 +1,23 @@
+{
+    "monsters": [
+        { "id": "chaser_basic", "name": "Chaser", "behavior": "chaser", "brainId": "brain_chaser", "tint": 16733525, "speed": 120, "hp": 20, "bodyRadius": 12, "chaseMode": "always" },
+        { "id": "shooter_basic", "name": "Shooter", "behavior": "shooter", "brainId": "brain_shooter", "tint": 16777215, "speed": 80, "hp": 18, "range": 320, "fireCooldownMs": 900, "projectileSpeed": 260, "bodyRadius": 12, "chaseMode": "onSight", "sightRange": 420, "skills": [{ "id": "skill_shoot" }] },
+        { "id": "shooter_v2", "name": "Shooter v2", "behavior": "shooter", "brainId": "brain_shooter", "tint": 16777215, "speed": 80, "hp": 18, "range": 320, "bodyRadius": 12, "chaseMode": "onSight", "sightRange": 420, "skills": [{ "id": "skill_shoot" }] },
+        { "id": "charger", "name": "Charger", "behavior": "chaser", "brainId": "brain_charger", "tint": 16711680, "speed": 90, "hp": 24, "bodyRadius": 12, "skills": [{ "id": "skill_dash" }], "chaseMode": "onSight", "sightRange": 360 },
+        { "id": "miner", "name": "Miner", "behavior": "shooter", "brainId": "brain_miner", "tint": 3407667, "speed": 60, "hp": 20, "range": 260, "bodyRadius": 12, "skills": [{ "id": "skill_mine" }], "chaseMode": "onSight", "sightRange": 380 },
+        {
+            "id": "boss_ring",
+            "name": "Ring Boss",
+            "behavior": "boss",
+            "brainId": "brain_boss_ring",
+            "tint": 10181669,
+            "speed": 80,
+            "hp": 200,
+            "scale": 1.8,
+            "bodyRadius": 20,
+            "skills": [
+                { "id": "skill_ring" }
+            ]
+        }
+    ]
+}
