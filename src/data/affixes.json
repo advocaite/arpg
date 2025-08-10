@@ -1,0 +1,20 @@
+{
+    "affixes": [
+        { "id": "pri_strength", "category": "primary", "label": "+Strength", "statKey": "strength", "valueType": "flat", "min": 5, "max": 50, "weight": 10 },
+        { "id": "pri_dexterity", "category": "primary", "label": "+Dexterity", "statKey": "dexterity", "valueType": "flat", "min": 5, "max": 50, "weight": 10 },
+        { "id": "pri_intelligence", "category": "primary", "label": "+Intelligence", "statKey": "intelligence", "valueType": "flat", "min": 5, "max": 50, "weight": 10 },
+        { "id": "pri_vitality", "category": "primary", "label": "+Vitality", "statKey": "vitality", "valueType": "flat", "min": 5, "max": 50, "weight": 10 },
+
+        { "id": "sec_hp", "category": "secondary", "label": "+Max Life", "statKey": "hp", "valueType": "flat", "min": 10, "max": 150, "weight": 10, "allowedTypes": ["armor"], "allowedSubtypes": ["chest", "helm", "pants", "boots", "gloves", "belt"] },
+        { "id": "sec_armor", "category": "secondary", "label": "+Armor", "statKey": "armor", "valueType": "flat", "min": 5, "max": 60, "weight": 8, "allowedTypes": ["armor"] },
+        { "id": "sec_hok", "category": "secondary", "label": "+Health on Kill", "statKey": "healthOnKill", "valueType": "flat", "min": 1, "max": 8, "weight": 6 },
+        { "id": "sec_hon", "category": "secondary", "label": "+Health per Second", "statKey": "healthPerSecond", "valueType": "flat", "min": 1, "max": 10, "weight": 6 },
+        { "id": "sec_aspd", "category": "secondary", "label": "+Attack Speed", "statKey": "attackSpeedMult", "valueType": "percent", "min": 2, "max": 12, "weight": 6, "allowedTypes": ["weapon"] },
+        { "id": "sec_crit", "category": "secondary", "label": "+Crit Chance", "statKey": "critChance", "valueType": "percent", "min": 1, "max": 10, "weight": 4 },
+        { "id": "sec_area", "category": "secondary", "label": "+Area Damage", "statKey": "areaDamagePct", "valueType": "percent", "min": 2, "max": 20, "weight": 3 },
+        { "id": "sec_mf", "category": "secondary", "label": "+Magic Find", "statKey": "magicFindPct", "valueType": "percent", "min": 2, "max": 20, "weight": 5 },
+
+        { "id": "leg_thunderproc", "category": "legendary", "label": "Thunderstruck", "powerRef": "lightning.chain", "procChance": 0.08, "powerParams": { "chains": 3, "damage": 20 } },
+        { "id": "leg_bloodnova", "category": "legendary", "label": "Blood Nova", "powerRef": "aoe.pulse", "procChance": 0.05, "powerParams": { "radius": 80, "damage": 25, "color": 16733525 } }
+    ]
+}

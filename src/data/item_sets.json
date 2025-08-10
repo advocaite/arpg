@@ -1,0 +1,11 @@
+{
+    "sets": [{
+        "id": "set_warrior_oath",
+        "name": "Warrior's Oath",
+        "itemIds": ["helm_oath", "armor_oath", "sword_oath"],
+        "bonuses": [
+            { "count": 2, "stats": { "strength": 25, "armor": 30 } },
+            { "count": 3, "powerRef": "aoe.pulse", "powerParams": { "radius": 60, "damage": 30, "color": 16737792 } }
+        ]
+    }]
+}

@@ -1,15 +1,17 @@
 import Phaser from 'phaser'
 import PauseSystem from '@/systems/PauseSystem'
-import { CharacterProfile, WorldConfig, PortalConfig, SpawnerConfig } from '@/types'
+import { CharacterProfile, WorldConfig, PortalConfig, SpawnerConfig, ItemInstance, EquipmentConfig, ItemAffixRoll } from '@/types'
 import { loadWorldConfig } from '@/systems/WorldLoader'
 import townConfig from '@/data/worlds/town.json'
 import HotbarUI from '@/ui/Hotbar'
+import InventoryUI from '@/ui/Inventory'
 import OrbsUI from '@/ui/Orbs'
-import { loadHotbar, saveHotbar } from '@/systems/Inventory'
+import { loadHotbar, saveHotbar, loadInventory, saveInventory, loadEquipment, saveEquipment, countItemInInv, canAddItem, addToInventory } from '@/systems/Inventory'
 import { computeDerivedStats } from '@/systems/Stats'
 import StatsPanel from '@/ui/StatsPanel'
 import ShopUI from '@/ui/Shop'
-import { listItems } from '@/systems/ItemDB'
+import { listItems, getItem } from '@/systems/ItemDB'
+import { playerKillDrop } from '@/systems/DropSystem'
 import { getMonster } from '@/systems/MonsterDB'
 import { getSkill, listSkills } from '@/systems/SkillDB'
 import { upsertCharacter } from '@/systems/SaveSystem'
@@ -58,6 +60,9 @@ export default class WorldScene extends Phaser.Scene {
   private magnetRadius = 120
   private goldMagnetRadius = 120
   private areaDamagePct = 0
+  private bonusStats: Record<string, number> = {}
+  private itemProcs: Array<{ powerRef: string; procChance: number; powerParams?: Record<string, any> }> = []
+  private magicFindBonusPct = 0
   private thornsDamage = 0
   private thornsRadius = 180
   private regenCarryover = 0
@@ -78,6 +83,7 @@ export default class WorldScene extends Phaser.Scene {
   private projectiles!: Phaser.Physics.Arcade.Group
   private pickups!: Phaser.Physics.Arcade.Group
   private hotbar?: HotbarUI
+  private invUI?: InventoryUI
   private orbs?: OrbsUI
   private hotbarCfg: { potionRefId?: string; primaryRefId?: string; primaryRuneRefId?: string; secondaryRefId?: string; secondaryRuneRefId?: string; skillRefIds: (string | undefined)[]; runeRefIds?: (string | undefined)[] } = { potionRefId: undefined, skillRefIds: [], runeRefIds: [undefined, undefined, undefined, undefined] }
   private statsPanel?: StatsPanel
@@ -88,6 +94,7 @@ export default class WorldScene extends Phaser.Scene {
   private numKeys!: Phaser.Input.Keyboard.Key[]
   private restartKey!: Phaser.Input.Keyboard.Key
   private respawnKey!: Phaser.Input.Keyboard.Key
+  private iKey!: Phaser.Input.Keyboard.Key
   private skillCooldownUntil: number[] = [0, 0, 0, 0]
   private mana = 100
   private maxMana = 100
@@ -103,6 +110,10 @@ export default class WorldScene extends Phaser.Scene {
   private restartHold?: HoldAction
   private lastCheckpoint: { x: number; y: number } | null = null
   private uiModalOpen = false
+  private inventory: ItemInstance[] = []
+  private equipment: EquipmentConfig = {}
+  private weaponFlatDamage = 0
+  private bonusMaxHp = 0
 
   constructor() { super({ key: 'World' }) }
 
@@ -125,6 +136,7 @@ export default class WorldScene extends Phaser.Scene {
     this.restartKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.R)
     this.respawnKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER)
     this.qKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Q)
+    this.iKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.I)
     this.numKeys = [
       this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
       this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.TWO),
@@ -288,17 +300,27 @@ export default class WorldScene extends Phaser.Scene {
       }
     }
 
-    // Hotbar
-    this.hotbarCfg = loadHotbar(this.character?.id ?? 0)
+    // Inventory/Equipment/Hotbar
+    const charId = this.character?.id ?? 0
+    this.inventory = loadInventory(charId)
+    this.equipment = loadEquipment(charId)
+    this.hotbarCfg = loadHotbar(charId)
     this.hotbar = new HotbarUI(this)
     this.orbs = new OrbsUI(this)
     const cfgToUse = (this.hotbarCfg.potionRefId || this.hotbarCfg.skillRefIds.length) ? this.hotbarCfg : { potionRefId: 'potion_small', skillRefIds: ['skill_dash', undefined, undefined, undefined] as (string | undefined)[] }
     this.hotbar.mount(cfgToUse)
+    if (cfgToUse.potionRefId) {
+      try { this.hotbar.setPotionCount(countItemInInv(this.inventory, cfgToUse.potionRefId)) } catch { this.hotbar.setPotionCount(0) }
+    }
     this.orbs.mount({ hotbarBounds: this.hotbar.getBounds(), hp: this.playerHp, maxHp: this.maxHp, mana: this.mana, maxMana: this.maxMana })
     this.scale.on('resize', () => this.orbs?.relayout(this.hotbar?.getBounds()))
     this.hotbar.setOnSkillClick(() => this.openSkillsOverview())
     this.hotbar.setOnPrimaryClick(() => this.openSkillsOverview())
     this.hotbar.setOnSecondaryClick(() => this.openSkillsOverview())
+    // Inventory UI instance
+    this.invUI = new InventoryUI(this)
+    // Apply equipment effects at start
+    this.applyEquipmentEffects()
 
     // Portals
     for (const p of this.worldConfig.portals) {
@@ -359,6 +381,9 @@ export default class WorldScene extends Phaser.Scene {
 
     // Checkpoints (optional)
     this.setupCheckpoints(this.worldConfig.checkpoints || [])
+
+    // Keybinds after UI created
+    this.input.keyboard?.on('keydown-I', () => { if (!this.uiModalOpen) { this.openInventory() } })
   }
 
   private teleport(p: PortalConfig): void {
@@ -537,6 +562,8 @@ export default class WorldScene extends Phaser.Scene {
             const dx = e.x - this.player.x, dy = e.y - this.player.y
             if (Math.hypot(dx, dy) <= r) {
               showHit(e.x, e.y, Math.max(1, Math.floor(reflect * 0.5)))
+              // Simulate drop on death
+              playerKillDrop(this, e.x, e.y, 0.1)
               e.destroy()
             }
             return true
@@ -562,6 +589,177 @@ export default class WorldScene extends Phaser.Scene {
     })
   }
 
+  private spawnDropsAt(x: number, y: number, opts: { coins?: number; hearts?: number; itemChance?: number }): void {
+    const coins = Math.max(0, Math.floor(opts.coins || 0))
+    const hearts = Math.max(0, Math.floor(opts.hearts || 0))
+    const itemChance = Math.max(0, Math.min(1, Number(opts.itemChance ?? 0)))
+    const jitter = () => Phaser.Math.Between(-10, 10)
+    for (let i = 0; i < coins; i++) {
+      const p = this.physics.add.sprite(x + jitter(), y + jitter(), 'coin')
+      p.setDepth(1); p.setData('drop', { type: 'coin', amount: 1 })
+      this.pickups.add(p)
+    }
+    for (let i = 0; i < hearts; i++) {
+      const p = this.physics.add.sprite(x + jitter(), y + jitter(), 'heart')
+      p.setDepth(1); p.setData('drop', { type: 'heart', heal: 10 })
+      this.pickups.add(p)
+    }
+    // MF scales item chance
+    const mfScaledChance = itemChance * (1 + Math.max(0, Number(this.character?.derived?.magicFindPct ?? 0)) + this.magicFindBonusPct)
+    if (Math.random() < mfScaledChance) {
+      // choose a simple item from DB for now
+      const pool = listItems().filter(i => i.type !== 'potion')
+      if (pool.length) {
+        const base = pool[Phaser.Math.Between(0, pool.length - 1)]
+        const p = this.physics.add.sprite(x + jitter(), y + jitter(), base.type === 'weapon' ? 'icon_weapon' : 'icon_armor')
+        p.setDepth(1); p.setData('drop', { type: 'item', itemId: base.id })
+        this.pickups.add(p)
+      }
+    }
+    // Overlap to pick up
+    try {
+      this.physics.add.overlap(this.player, this.pickups, (_player, drop) => this.tryPickup(drop as any))
+    } catch {}
+  }
+
+  private tryPickup(drop: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody): void {
+    const type = drop.getData('drop')?.type
+    if (!type) return
+    if (type === 'coin') {
+      this.coins += Number(drop.getData('drop')?.amount || 1)
+      localStorage.setItem('coins', String(this.coins))
+      this.coinText?.setText(`Coins: ${this.coins}`)
+      drop.destroy(); return
+    }
+    if (type === 'heart') {
+      const heal = Number(drop.getData('drop')?.heal || 10)
+      this.playerHp = Math.min(this.maxHp, this.playerHp + heal)
+      this.hpText?.setText(`HP: ${this.playerHp}`)
+      this.orbs?.update(this.playerHp, this.maxHp, this.mana, this.maxMana)
+      drop.destroy(); return
+    }
+    if (type === 'item') {
+      const itemId = String(drop.getData('drop')?.itemId || '')
+      if (!itemId) { drop.destroy(); return }
+      const charId = this.character?.id ?? 0
+      if (!canAddItem(this.inventory, itemId, 1)) {
+        // no space; leave on ground
+        return
+      }
+      const mf = Math.max(0, Number(this.character?.derived?.magicFindPct ?? 0))
+      this.inventory = addToInventory(charId, this.inventory, itemId, 1, { magicFindPct: mf })
+      drop.destroy()
+    }
+  }
+
+  private openInventory(): void {
+    this.uiModalOpen = true
+    this.hotbar?.setAllowSkillClick(false)
+    const charId = this.character?.id ?? 0
+    this.invUI?.open(this.inventory, (items) => {
+      this.inventory = items
+      saveInventory(charId, this.inventory)
+      // refresh potion count if needed
+      const potId = this.hotbarCfg.potionRefId
+      if (potId) {
+        try { this.hotbar?.setPotionCount(countItemInInv(this.inventory, potId)) } catch {}
+      }
+    }, (_payload) => {
+      // Allow dragging onto hotbar from inventory: ONLY potions into potion slot
+      const { itemId, x, y } = _payload
+      const cfg = getItem(itemId)
+      if (!cfg || cfg.type !== 'potion') return
+      const screenX = x, screenY = y
+      const barY = this.scale.height - 24
+      if (Math.abs(screenY - barY) > 40) return
+      const potionRect = new Phaser.Geom.Rectangle(this.scale.width / 2 - 520 / 2 + 0, barY - 20, 60, 40)
+      if (Phaser.Geom.Rectangle.Contains(potionRect, screenX, screenY)) {
+        this.hotbarCfg.potionRefId = itemId
+        saveHotbar(charId, this.hotbarCfg)
+        this.hotbar?.mount(this.hotbarCfg)
+        try { this.hotbar?.setPotionCount(countItemInInv(this.inventory, itemId)) } catch {}
+      }
+    }, this.equipment, (slot, itemId, affixes, slotKey) => {
+      try { console.log('[World] onEquip', { slot, slotKey, itemId, affixes }) } catch {}
+      if (slotKey) (this.equipment as any)[slotKey + 'Affixes'] = affixes
+      if (slot === 'weapon') this.equipment.mainHandId = itemId
+      if (slot === 'armor') this.equipment.chestId = itemId
+      saveEquipment(charId, this.equipment)
+      this.applyEquipmentEffects()
+    }, (slotKey) => {
+      // onUnequip: ensure we clear stored affixes
+      if (slotKey) {
+        try { console.log('[World] onUnequip', { slotKey }) } catch {}
+        (this.equipment as any)[slotKey] = undefined
+        ;(this.equipment as any)[slotKey + 'Affixes'] = undefined
+        saveEquipment(charId, this.equipment)
+        this.applyEquipmentEffects()
+      }
+    })
+    const esc = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.ESC)
+    esc?.once('down', () => { this.uiModalOpen = false; this.hotbar?.setAllowSkillClick(true) })
+  }
+
+  private applyEquipmentEffects(): void {
+    // Reset bonuses
+    this.weaponFlatDamage = 0
+    this.bonusMaxHp = 0
+    // Reset proc list and stat map
+    this.itemProcs = []
+    this.bonusStats = {}
+    this.magicFindBonusPct = 0
+    // Helpers to add stats
+    const addFlat = (k: string, v: number) => { this.bonusStats[k] = (this.bonusStats[k] || 0) + v }
+    const addPct = (k: string, v: number) => { this.bonusStats[k] = (this.bonusStats[k] || 0) + v }
+
+    // Weapon contribution + affixes
+    const wId = this.equipment.mainHandId || this.equipment.weaponId
+    if (wId) {
+      const cfg = getItem(wId)
+      const addDmg = Number(cfg?.params?.['damage'] ?? cfg?.params?.['magicDamage'] ?? 0)
+      if (Number.isFinite(addDmg)) this.weaponFlatDamage += addDmg
+      const aff = (this.equipment as any).mainHandAffixes as ItemAffixRoll[] | undefined
+      if (aff) {
+        this.applyAffixRolls(aff, 'weapon')
+      }
+    }
+    // Armor contribution (hp) + affixes
+    const chestId = this.equipment.chestId || this.equipment.armorId
+    if (chestId) {
+      const cfg = getItem(chestId)
+      const extraHp = Number(cfg?.params?.['hp'] ?? 0)
+      if (Number.isFinite(extraHp)) this.bonusMaxHp += extraHp
+      const aff = (this.equipment as any).chestAffixes as ItemAffixRoll[] | undefined
+      if (aff) this.applyAffixRolls(aff, 'armor')
+    }
+    // Recompute effective max HP and clamp current
+    const baseMax = this.character?.derived?.lifePerVitality ? Math.max(1, Math.floor(100 + (this.character?.stats.vitality || 0) * this.character.derived.lifePerVitality)) : this.maxHp
+    this.maxHp = baseMax + this.bonusMaxHp
+    this.playerHp = Math.min(this.playerHp, this.maxHp)
+    this.hpText?.setText(`HP: ${this.playerHp}`)
+    this.orbs?.update(this.playerHp, this.maxHp, this.mana, this.maxMana)
+  }
+
+  private applyAffixRolls(rolls: ItemAffixRoll[], slotType: 'weapon' | 'armor'): void {
+    for (const r of rolls) {
+      // map common affixes to scene modifiers (extendable)
+      if (r.affixId === 'sec_hp' && typeof r.value === 'number') this.bonusMaxHp += r.value
+      if (r.affixId === 'sec_hok' && typeof r.value === 'number') (this as any).healthOnKill = (this as any).healthOnKill + r.value
+      if (r.affixId === 'sec_aspd' && typeof r.value === 'number') this.attackSpeedScale *= (1 + (r.value / 100))
+      if (r.affixId === 'sec_area' && typeof r.value === 'number') this.areaDamagePct += (r.value / 100)
+      if (r.affixId === 'sec_mf' && typeof r.value === 'number') this.magicFindBonusPct += (r.value / 100)
+      // primary stats
+      if (r.affixId === 'pri_strength' && typeof r.value === 'number') addTo(this, 'strength', r.value)
+      if (r.affixId === 'pri_dexterity' && typeof r.value === 'number') addTo(this, 'dexterity', r.value)
+      if (r.affixId === 'pri_intelligence' && typeof r.value === 'number') addTo(this, 'intelligence', r.value)
+      if (r.affixId === 'pri_vitality' && typeof r.value === 'number') addTo(this, 'vitality', r.value)
+      // legendary proc mapping (ids from affixes.json)
+      if (r.affixId === 'leg_thunderproc') this.itemProcs.push({ powerRef: 'lightning.chain', procChance: 0.08, powerParams: { chains: 3, damage: 20 } })
+      if (r.affixId === 'leg_bloodnova') this.itemProcs.push({ powerRef: 'aoe.pulse', procChance: 0.05, powerParams: { radius: 80, damage: 25, color: 0xff4445 } })
+    }
+    function addTo(self: any, key: string, v: number) { self.bonusStats[key] = (self.bonusStats[key] || 0) + v }
+  }
+
   private async performAttack(): Promise<void> {
     const now = this.time.now
     const cooldown = this.attackCooldownMs / Math.max(0.001, this.attackSpeedScale)
@@ -576,7 +774,8 @@ export default class WorldScene extends Phaser.Scene {
       const angleOffset = (strikes > 1) ? ((i - (strikes - 1) / 2) * 0.2) : 0
       const ang = baseAngle + angleOffset
       const isCrit = Math.random() < this.critChance
-      const dmg = Math.round(10 * this.damageMultiplier * (isCrit ? this.critDamageMult : 1))
+      const base = 10 + Math.max(0, this.weaponFlatDamage)
+      const dmg = Math.round(base * this.damageMultiplier * (isCrit ? this.critDamageMult : 1))
       // Use power registry for swing
       try {
         const anyPowers = await import('@/systems/Powers')

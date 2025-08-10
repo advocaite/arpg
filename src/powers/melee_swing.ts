@@ -27,6 +27,25 @@ export default function meleeSwing(ctx: PowerContext, args: PowerInvokeArgs): vo
     const newHp = Math.max(0, hp - damage)
     target.setData('hp', newHp)
     try { executeEffectByRef('fx.damageNumber', { scene: ctx.scene, caster: ctx.caster }, { x: target.x, y: target.y - 10, value: `${damage}`, color, durationMs: 450, element: String((args.skill as any)?.element || 'physical'), crit }) } catch {}
+    // Item procs on hit
+    try {
+      const sceneAny: any = ctx.scene
+      if (Array.isArray(sceneAny.itemProcs)) {
+        // Lazy-load once and cache on scene
+        let exec = (sceneAny.__execPower as any)
+        if (typeof exec !== 'function') {
+          import('@/systems/Powers').then((mod) => { sceneAny.__execPower = (mod as any).executePowerByRef })
+        }
+        exec = (sceneAny.__execPower as any)
+        for (const p of sceneAny.itemProcs) {
+          if (Math.random() < (p.procChance || 0)) {
+            if (typeof exec === 'function') {
+              exec(p.powerRef, { scene: ctx.scene, caster: ctx.caster, enemies: ctx.enemies }, { skill: { id: p.powerRef, name: 'Proc', type: 'aoe' } as any, params: p.powerParams || {} })
+            }
+          }
+        }
+      }
+    } catch {}
     if (newHp <= 0) {
       try {
         const anyScene: any = ctx.scene
@@ -38,6 +57,14 @@ export default function meleeSwing(ctx: PowerContext, args: PowerInvokeArgs): vo
         }
         const award = Math.max(1, Math.floor(((target.getData('level') as number) || 1) * 5))
         anyScene.gainExperience?.(award)
+        // Drop chance hook for any player-caused kill (lazy-load once)
+        try {
+          if (!(anyScene.__dropUtil)) {
+            import('@/systems/DropSystem').then(mod => { anyScene.__dropUtil = mod })
+          }
+          const util = anyScene.__dropUtil
+          if (util?.playerKillDrop) util.playerKillDrop(anyScene, target.x, target.y, 0.1)
+        } catch {}
       } catch {}
       target.destroy()
     }

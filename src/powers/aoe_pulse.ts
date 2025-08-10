@@ -33,6 +33,14 @@ export default function aoePulse(ctx: PowerContext, args: PowerInvokeArgs): void
               anyScene.orbs?.update(anyScene.playerHp, anyScene.maxHp, anyScene.mana, anyScene.maxMana || 100)
             }
             anyScene.gainExperience?.(Math.max(1, Math.floor(((e.getData('level') as number) || 1) * 5)))
+            // Drop chance hook for AoE kills (lazy-load once)
+            try {
+              if (!(anyScene.__dropUtil)) {
+                import('@/systems/DropSystem').then(mod => { anyScene.__dropUtil = mod })
+              }
+              const util = anyScene.__dropUtil
+              if (util?.playerKillDrop) util.playerKillDrop(anyScene, e.x, e.y, 0.1)
+            } catch {}
             // damage number at AoE kill position
             executeEffectByRef('fx.damageNumber', { scene: ctx.scene, caster: ctx.caster }, { x: e.x, y: e.y - 10, value: `${damage}`, element: 'physical' })
           } catch {}

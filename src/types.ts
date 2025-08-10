@@ -209,6 +209,51 @@ export type ItemInstance = {
   id: string // instance id
   itemId: string
   qty?: number
+  // Optional per-instance rolls/metadata
+  affixes?: ItemAffixRoll[]
+  setId?: string
+}
+
+// Item affixes (data-driven)
+export type AffixCategory = 'primary' | 'secondary' | 'legendary' | 'set'
+
+export type AffixConfig = {
+  id: string
+  category: AffixCategory
+  label: string
+  // If this modifies a stat or item param directly
+  statKey?: string // e.g., 'strength', 'hp', 'damage', 'healthOnKill', 'attackSpeedMult', etc.
+  valueType?: 'flat' | 'percent'
+  min?: number
+  max?: number
+  // Constraints
+  allowedTypes?: ItemType[] // e.g., ['weapon']
+  allowedSubtypes?: string[] // e.g., ['mainHand', 'chest']
+  weight?: number // selection weight for RNG
+  // Legendary proc/power support
+  powerRef?: string
+  procChance?: number // 0..1
+  powerParams?: Record<string, number | string | boolean>
+}
+
+export type ItemAffixRoll = {
+  affixId: string
+  value?: number
+}
+
+// Item sets (data-driven)
+export type SetBonus = {
+  count: number
+  stats?: Record<string, number>
+  powerRef?: string
+  powerParams?: Record<string, number | string | boolean>
+}
+
+export type ItemSetConfig = {
+  id: string
+  name: string
+  itemIds: string[]
+  bonuses: SetBonus[]
 }
 
 export type HotbarConfig = {
@@ -228,15 +273,25 @@ export type EquipmentConfig = {
   armorId?: string
   // detailed slots
   mainHandId?: string
+  mainHandAffixes?: ItemAffixRoll[]
   offHandId?: string
+  offHandAffixes?: ItemAffixRoll[]
   helmId?: string
+  helmAffixes?: ItemAffixRoll[]
   chestId?: string
+  chestAffixes?: ItemAffixRoll[]
   pantsId?: string
+  pantsAffixes?: ItemAffixRoll[]
   bootsId?: string
+  bootsAffixes?: ItemAffixRoll[]
   glovesId?: string
+  glovesAffixes?: ItemAffixRoll[]
   beltId?: string
+  beltAffixes?: ItemAffixRoll[]
   amuletId?: string
+  amuletAffixes?: ItemAffixRoll[]
   shouldersId?: string
+  shouldersAffixes?: ItemAffixRoll[]
 }
 
 // Passive skills (always-on or timed) – data-driven with modular code hooks

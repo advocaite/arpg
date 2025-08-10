@@ -36,6 +36,17 @@ export default function lightningChain(ctx: PowerContext, args: PowerInvokeArgs)
     executeEffectByRef(effectRef, { scene: ctx.scene, caster: ctx.caster }, { x1: fromX, y1: fromY, x2: candidate.x, y2: candidate.y })
     // Apply damage through AoE callback as a point target
     ctx.onAoeDamage?.(candidate.x, candidate.y, 0, damage)
+    // If kill occurred via onAoeDamage handler, it will handle drops; also add a direct check in case handler is bypassed
+    try {
+      const hp = Number(candidate.getData('hp') || 1)
+      const newHp = Math.max(0, hp - damage)
+      if (newHp <= 0) {
+        const anyScene: any = ctx.scene
+        if (!(anyScene.__dropUtil)) { import('@/systems/DropSystem').then(mod => { anyScene.__dropUtil = mod }) }
+        const util = anyScene.__dropUtil
+        if (util?.playerKillDrop) util.playerKillDrop(anyScene, candidate.x, candidate.y, 0.1)
+      }
+    } catch {}
     visited.add(candidate)
     fromX = candidate.x; fromY = candidate.y
     current = candidate

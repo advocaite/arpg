@@ -1,7 +1,7 @@
 import Phaser from 'phaser'
-import type { ItemInstance, EquipmentConfig } from '@/types'
+import type { ItemInstance, EquipmentConfig, ItemAffixRoll } from '@/types'
 import Tooltip from '@/ui/Tooltip'
-import { getItem } from '@/systems/ItemDB'
+import { getItem, rarityToColor, getAffix } from '@/systems/ItemDB'
 
 export default class InventoryUI {
   private scene: Phaser.Scene
@@ -9,7 +9,8 @@ export default class InventoryUI {
   private items: ItemInstance[] = []
   private onChange?: (items: ItemInstance[]) => void
   private onDrop?: (payload: { itemId: string; x: number; y: number }) => void
-  private onEquip?: (slot: 'weapon' | 'armor', itemId: string) => void
+  private onEquip?: (slot: 'weapon' | 'armor', itemId: string, affixes?: ItemAffixRoll[], slotKey?: string) => void
+  private onUnequip?: (slotKey: string) => void
   private tooltip: Tooltip
   private equipment: EquipmentConfig = {}
   private equipRects: { weapon: Phaser.Geom.Rectangle; armor: Phaser.Geom.Rectangle } | null = null
@@ -34,12 +35,13 @@ export default class InventoryUI {
     this.tooltip = new Tooltip(scene)
   }
 
-  open(items: ItemInstance[], onChange?: (items: ItemInstance[]) => void, onDrop?: (payload: { itemId: string; x: number; y: number }) => void, equipment?: EquipmentConfig, onEquip?: (slot: 'weapon' | 'armor', itemId: string) => void): void {
+  open(items: ItemInstance[], onChange?: (items: ItemInstance[]) => void, onDrop?: (payload: { itemId: string; x: number; y: number }) => void, equipment?: EquipmentConfig, onEquip?: (slot: 'weapon' | 'armor', itemId: string, affixes?: ItemAffixRoll[], slotKey?: string) => void, onUnequip?: (slotKey: string) => void): void {
     this.close()
     this.items = [...items]
     this.onChange = onChange
     this.onDrop = onDrop
     this.onEquip = onEquip
+    this.onUnequip = onUnequip
     this.equipment = { ...(equipment ?? {}) }
 
     const w = 420, h = 300
@@ -167,8 +169,9 @@ export default class InventoryUI {
     if (!it) return
     const cfg = getItem(it.itemId)
     const qty = it.qty && it.qty > 1 ? `\nQty: ${it.qty}` : ''
-    const content = cfg ? `${cfg.name} [${cfg.rarity}]${qty}\n${cfg.lore ?? ''}` : it.itemId
-    this.tooltip.show(content, p.worldX, p.worldY)
+    const content = cfg ? this.formatItemTooltip(cfg, qty, it) : it.itemId
+    const border = this.effectiveBorderColor(cfg, it)
+    this.tooltip.show(content, p.worldX, p.worldY, { borderColor: border })
   }
 
   private onDragStart(idx: number): void {
@@ -203,17 +206,31 @@ export default class InventoryUI {
           console.log('[Inventory] drop over slot', { slot: { id: slot.id, type: slot.type, sub: slot.subtype, rect: slot.rect }, item: { type, sub }, valid })
           if (valid) {
             const prevId = (this.equipment as any)[slot.id] as string | undefined
+            const prevAff = (this.equipment as any)[slot.id + 'Affixes'] as ItemAffixRoll[] | undefined
             ;(this.equipment as any)[slot.id] = it.itemId
-            this.onEquip?.(slot.type, it.itemId)
-            // remove item from inventory grid
-            if (this.dragIndex !== null) { this.items[this.dragIndex] = undefined as any }
-            // return previously equipped item to inventory grid
-            if (prevId && prevId !== it.itemId) this.addItemToGrid(prevId)
+            // Store affixes locally so tooltips and future swaps preserve them
+            const newAff = (it as any).affixes as ItemAffixRoll[] | undefined
+            ;(this.equipment as any)[slot.id + 'Affixes'] = newAff
+            try { console.log('[Inventory] equip drop', { slot: slot.id, itemId: it.itemId, newAff, prevId, prevAff }) } catch {}
+            this.onEquip?.(slot.type, it.itemId, newAff, slot.id)
+            // Swap: put previous equipped back into the same grid index we took from
+            if (this.dragIndex !== null) {
+              if (prevId && prevId !== it.itemId) {
+                const inst = { id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, itemId: prevId, qty: 1, affixes: prevAff } as ItemInstance
+                ;(this.items as any)[this.dragIndex] = inst
+              } else {
+                // If no previous item, clear the grid cell
+                this.items[this.dragIndex] = undefined as any
+              }
+            } else {
+              // No known drag index; fallback to push previous into grid if exists
+              if (prevId && prevId !== it.itemId) this.addItemToGrid(prevId, prevAff)
+            }
             // persist
             this.onChange?.(this.items.filter(Boolean) as ItemInstance[])
             // refresh UI
             this.dragIndex = null
-            this.open([...this.items.filter(Boolean)], this.onChange, this.onDrop, this.equipment, this.onEquip)
+            this.open([...this.items.filter(Boolean)], this.onChange, this.onDrop, this.equipment, this.onEquip, this.onUnequip)
           // show tooltip for equipped (use world coords, center of slot)
           const centerWX = (this.container?.x ?? 0) + slot.rect.x + slot.rect.width / 2
           const centerWY = (this.container?.y ?? 0) + slot.rect.y + slot.rect.height / 2
@@ -229,6 +246,20 @@ export default class InventoryUI {
           // try hotbar drop via external handler
           console.log('[Inventory] drop not over equip slots → delegate to hotbar handler')
           this.onDrop?.({ itemId: it.itemId, x, y })
+        }
+        // Handle unequip drag: if we were dragging from equip and did not equip elsewhere, add to grid
+        if (this.dragFromEquipId && this.dragItemId) {
+          const aff = (this.equipment as any)[this.dragFromEquipId + 'Affixes'] as ItemAffixRoll[] | undefined
+          try { console.log('[Inventory] unequip by drag', { slotId: this.dragFromEquipId, itemId: this.dragItemId, aff }) } catch {}
+          this.addItemToGrid(this.dragItemId, aff)
+          ;(this.equipment as any)[this.dragFromEquipId] = undefined
+          ;(this.equipment as any)[this.dragFromEquipId + 'Affixes'] = undefined
+          this.onUnequip?.(this.dragFromEquipId)
+          this.onChange?.(this.items.filter(Boolean) as ItemInstance[])
+          this.open([...this.items.filter(Boolean)], this.onChange, this.onDrop, this.equipment, this.onEquip, this.onUnequip)
+          this.dragFromEquipId = null
+          this.dragItemId = null
+          return
         }
         // Reorder inside inventory grid if dropped over another cell
         if (grid) {
@@ -248,7 +279,8 @@ export default class InventoryUI {
               const onDrop = this.onDrop
               const equip = this.equipment
               const onEquip = this.onEquip
-              this.open(itemsCopy, onChange, onDrop, equip, onEquip)
+              const onUnequip = this.onUnequip
+              this.open(itemsCopy, onChange, onDrop, equip, onEquip, onUnequip)
               this.onChange?.(this.items)
               return
             }
@@ -305,8 +337,47 @@ export default class InventoryUI {
     if (!itemId) { this.tooltip.hide(); return }
     const cfg = getItem(itemId)
     if (!cfg) { this.tooltip.hide(); return }
-    const content = `${cfg.name} [${cfg.rarity}]\n${cfg.lore ?? ''}`
-    this.tooltip.show(content, p.worldX, p.worldY)
+    const aff = (this.equipment as any)[slotId + 'Affixes'] as ItemAffixRoll[] | undefined
+    try { console.log('[Inventory] showEquipTooltip', { slotId, itemId, hasAffixes: !!aff, affixes: aff }) } catch {}
+    const content = this.formatItemTooltip(cfg, '', aff ? { id: 'eq', itemId, affixes: aff } as any : undefined)
+    const border = this.effectiveBorderColor(cfg, aff ? { id: 'eq', itemId, affixes: aff } as any : undefined)
+    this.tooltip.show(content, p.worldX, p.worldY, { borderColor: border })
+  }
+
+  private effectiveBorderColor(cfg: any, inst?: ItemInstance): number {
+    // Legendary affix overrides border color to legendary even if base item rarity is lower
+    const hasLegendaryAffix = !!(inst?.affixes || []).find(r => (getAffix(r.affixId)?.category === 'legendary'))
+    if (hasLegendaryAffix) return rarityToColor('legendary' as any)
+    return cfg ? rarityToColor(cfg.rarity) : 0xffffff
+  }
+
+  private formatItemTooltip(cfg: any, qtyLine: string, inst?: ItemInstance): string {
+    const name = cfg?.name || 'Unknown'
+    const rarity = cfg?.rarity || 'common'
+    const lines: string[] = []
+    lines.push(`${name} [${rarity}]${qtyLine}`)
+    const p = cfg?.params || {}
+    const paramEntries = Object.entries(p)
+      .filter(([k, v]) => typeof v === 'number' || typeof v === 'string')
+      .map(([k, v]) => `- ${k}: ${v}`)
+    if (paramEntries.length) {
+      lines.push(paramEntries.join('\n'))
+    }
+    // Affixes
+    const rolls = inst?.affixes || []
+    if (rolls.length) {
+      lines.push('')
+      for (const r of rolls) {
+        const a = getAffix(r.affixId)
+        if (!a) continue
+        const v = (typeof r.value !== 'undefined') ? r.value : undefined
+        const suffix = (v != null) ? (a.valueType === 'percent' ? ` +${v}%` : ` +${v}`) : ''
+        lines.push(`• ${a.label}${suffix}`)
+      }
+    }
+    const lore = cfg?.lore || ''
+    if (lore) lines.push(lore)
+    return lines.join('\n')
   }
 
   private flashInvalid(slot: 'weapon' | 'armor'): void {
@@ -349,9 +420,8 @@ export default class InventoryUI {
         }
         const eqId = (this.equipment as any)[sOver.id] as string | undefined
         if (eqId) {
-          const cfg = getItem(eqId)
-          const content = cfg ? `${cfg.name} [${cfg.rarity}]\n${cfg.lore ?? ''}` : eqId
-          this.tooltip.show(content, p.worldX, p.worldY)
+          // Use the same equip tooltip renderer (with affixes + quality border)
+          this.showEquipTooltip(sOver.id, p)
         } else {
           this.tooltip.hide()
         }
@@ -436,20 +506,35 @@ export default class InventoryUI {
     if (!target) return
     console.log('[Inventory] autoEquip', { itemId, type: cfg.type, sub: cfg.subtype, target: { id: target.id, type: target.type, sub: target.subtype } })
     const prevId = (this.equipment as any)[target.id] as string | undefined
+    const prevAff = (this.equipment as any)[target.id + 'Affixes'] as ItemAffixRoll[] | undefined
     ;(this.equipment as any)[target.id] = itemId
-    this.onEquip?.(target.type, itemId)
+    const invInst = this.items.find(i => i && i.itemId === itemId)
+    const newAff = (invInst as any)?.affixes as ItemAffixRoll[] | undefined
+    ;(this.equipment as any)[target.id + 'Affixes'] = newAff
+    try { console.log('[Inventory] autoEquip', { target: target.id, itemId, newAff, prevId, prevAff }) } catch {}
+    this.onEquip?.(target.type, itemId, newAff, target.id)
     // remove one instance from inventory
     const idx = this.items.findIndex(i => i && i.itemId === itemId)
-    if (idx >= 0) this.items[idx] = undefined as any
-    if (prevId && prevId !== itemId) this.addItemToGrid(prevId)
+    if (idx >= 0) {
+      if (prevId && prevId !== itemId) {
+        // swap into same slot
+        const inst = { id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, itemId: prevId, qty: 1, affixes: prevAff } as ItemInstance
+        ;(this.items as any)[idx] = inst
+      } else {
+        this.items[idx] = undefined as any
+      }
+    } else if (prevId && prevId !== itemId) {
+      this.addItemToGrid(prevId, prevAff)
+    }
     this.onChange?.(this.items.filter(Boolean) as ItemInstance[])
     // refresh UI
-    this.open([...this.items.filter(Boolean)], this.onChange, this.onDrop, this.equipment, this.onEquip)
+    this.open([...this.items.filter(Boolean)], this.onChange, this.onDrop, this.equipment, this.onEquip, this.onUnequip)
   }
 
-  private addItemToGrid(itemId: string): void {
+  private addItemToGrid(itemId: string, affixes?: ItemAffixRoll[]): void {
     const emptyIdx = this.items.findIndex(i => !i)
-    const inst = { id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, itemId, qty: 1 } as ItemInstance
+    const inst = { id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, itemId, qty: 1, affixes } as ItemInstance
+    try { console.log('[Inventory] addItemToGrid', { itemId, affixes, usedIndex: emptyIdx }) } catch {}
     if (emptyIdx >= 0) (this.items as any)[emptyIdx] = inst
     else (this.items as any).push(inst)
   }

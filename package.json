@@ -6,7 +6,8 @@
     "scripts": {
         "dev": "vite",
         "build": "tsc -b && vite build",
-        "preview": "vite preview"
+        "preview": "vite preview",
+        "redev": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$ports=5177,5173; foreach($p in $ports){ try { Get-NetTCPConnection -LocalPort $p -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { try { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue } catch {} } } catch {} }; npm run build; npm run dev\""
     },
     "devDependencies": {
         "typescript": "^5.5.0",
