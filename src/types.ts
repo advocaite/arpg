@@ -1,4 +1,15 @@
-export type CharacterClass = 'melee' | 'ranged' | 'magic'
+// Support legacy broad archetypes and Diablo 3 class names
+export type CharacterClass =
+  | 'melee'
+  | 'ranged'
+  | 'magic'
+  | 'barbarian'
+  | 'crusader'
+  | 'demon_hunter'
+  | 'monk'
+  | 'necromancer'
+  | 'witch_doctor'
+  | 'wizard'
 
 export type Stats = {
   strength: number
@@ -7,11 +18,43 @@ export type Stats = {
   dexterity: number
 }
 
+export type DerivedStatsSnapshot = {
+  damageMultiplier: number
+  armor: number
+  resistAll: number
+  lifePerVitality: number
+  elementDamageMultipliers: Record<Element, number>
+  elementResists: Record<Element, number>
+  moveSpeedMult: number
+  attackSpeedMult: number
+  critChance: number
+  critDamageMult: number
+  magicFindPct: number
+  healthPerSecond: number
+  healthOnHit: number
+  globeMagnetRadius: number
+  goldMagnetRadius: number
+  dodgeChance: number
+  blockChance: number
+  blockAmount: number
+  crowdControlReductionPct: number
+  eliteDamageReductionPct: number
+  meleeDamageReductionPct: number
+  rangedDamageReductionPct: number
+  thornsDamage: number
+  areaDamagePct: number
+}
+
 export type CharacterProfile = {
   id: number
   name: string
   class: CharacterClass
   level?: number
+  exp?: number
+  hp?: number
+  mana?: number
+  maxMana?: number
+  derived?: DerivedStatsSnapshot
   stats: Stats
 }
 
@@ -54,6 +97,11 @@ export type SpawnerConfig = {
   count: number
   limit?: number
   startDelayMs?: number
+  // Optional: choose randomly from a set instead of fixed id
+  monsterPool?: string[]
+  // Optional: enforce or randomize tiers
+  tier?: 'normal' | 'champion' | 'rare' | 'unique'
+  randomTier?: boolean
 }
 
 export type CheckpointConfig = {
@@ -65,12 +113,46 @@ export type CheckpointConfig = {
 
 export type MonsterBehavior = 'chaser' | 'shooter' | 'boss'
 
+// Elements for damage/resistance and visual themes
+export type Element = 'physical' | 'fire' | 'cold' | 'lightning' | 'poison' | 'arcane'
+
+export type SkillCategory =
+  | 'primary'
+  | 'secondary'
+  | 'defensive'
+  | 'might'
+  | 'tactics'
+  | 'rage'
+  | 'utility'
+  | 'other'
+
+export type RuneConfig = {
+  id: string
+  name: string
+  description?: string
+  icon?: string
+  classRestriction?: CharacterClass | 'all'
+  // References to modular code
+  effectRef?: string
+  powerRef?: string
+  params?: Record<string, number | string | boolean>
+}
+
 export type SkillConfig = {
   id: string
   name: string
-  type: 'projectile' | 'dash' | 'aoe'
+  description?: string
+  icon?: string
+  type: 'projectile' | 'dash' | 'aoe' | 'buff'
+  category?: SkillCategory
+  classRestriction?: CharacterClass | 'all'
+  element?: Element
   cooldownMs?: number
+  // If provided, runtime will dispatch to modular powers/effect on use registry instead of builtin switch
+  effectRef?: string
+  powerRef?: string
   params?: Record<string, number | string | boolean>
+  runes?: RuneConfig[]
 }
 
 export type MonsterSkill = {
@@ -101,6 +183,10 @@ export type MonsterConfig = {
   chaseMode?: 'always' | 'onSight'
   sightRange?: number
   dropPoolId?: string
+  // Optional brain parameters and gameplay modifiers
+  params?: Record<string, number | string | boolean>
+  tier?: 'normal' | 'champion' | 'rare' | 'unique'
+  affixes?: string[]
 }
 
 export type ItemType = 'weapon' | 'armor' | 'potion' | 'trinket'
@@ -129,8 +215,11 @@ export type HotbarConfig = {
   potionRefId?: string
   // primary/secondary are independent of the 1-4 action slots
   primaryRefId?: string
+  primaryRuneRefId?: string
   secondaryRefId?: string
+  secondaryRuneRefId?: string
   skillRefIds: (string | undefined)[] // action slots 1-4
+  runeRefIds?: (string | undefined)[] // runes for action slots 1-4
 }
 
 export type EquipmentConfig = {
@@ -148,4 +237,17 @@ export type EquipmentConfig = {
   beltId?: string
   amuletId?: string
   shouldersId?: string
+}
+
+// Passive skills (always-on or timed) – data-driven with modular code hooks
+export type PassiveConfig = {
+  id: string
+  name: string
+  description?: string
+  icon?: string
+  classRestriction?: CharacterClass | 'all'
+  // Optional category or tags in future
+  effectRef?: string
+  powerRef?: string
+  params?: Record<string, number | string | boolean>
 }

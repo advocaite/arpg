@@ -1,15 +1,37 @@
 import Phaser from 'phaser'
-import { SkillConfig } from '@/types'
+import { RuneConfig, SkillConfig } from '@/types'
+import { executePowerByRef } from './Powers'
+import { executeEffectByRef } from './Effects'
 
 export type SkillContext = {
   scene: Phaser.Scene
   caster: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody
   target?: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody
+  cursor?: { x: number; y: number }
   projectiles?: Phaser.Physics.Arcade.Group
-  onAoeDamage?: (x: number, y: number, radius: number, damage: number) => void
+  onAoeDamage?: (x: number, y: number, radius: number, damage: number, opts?: { element?: string; source?: 'melee' | 'ranged' | 'spell' | 'unknown'; isElite?: boolean }) => void
+  enemies?: Phaser.Physics.Arcade.Group
 }
 
-export function executeSkill(cfg: SkillConfig, ctx: SkillContext): void {
+export function executeSkill(cfg: SkillConfig, ctx: SkillContext, opts?: { runeId?: string }): void {
+  // If skill (or selected rune) references a modular power, prefer that
+  const selectedRune: RuneConfig | undefined = opts?.runeId && cfg.runes
+    ? cfg.runes.find(r => r.id === opts!.runeId)
+    : undefined
+
+  const powerRef = selectedRune?.powerRef || cfg.powerRef
+  const effectRef = selectedRune?.effectRef || cfg.effectRef
+  if (powerRef) {
+    const mergedParams = { ...(cfg.params || {}) } as Record<string, number | string | boolean>
+    if (selectedRune?.params) {
+      Object.assign(mergedParams, selectedRune.params)
+    }
+    executePowerByRef(powerRef, ctx, { skill: cfg, rune: selectedRune, params: mergedParams })
+    if (effectRef) executeEffectByRef(effectRef, { scene: ctx.scene, caster: ctx.caster }, mergedParams)
+    return
+  }
+
+  // Fallback to built-in implementations
   switch (cfg.type) {
     case 'projectile':
       executeProjectile(cfg, ctx)
@@ -19,6 +41,14 @@ export function executeSkill(cfg: SkillConfig, ctx: SkillContext): void {
       break
     case 'aoe':
       executeAoe(cfg, ctx)
+      break
+    case 'buff':
+      // pure effect when no powerRef provided
+      if (effectRef) {
+        const mergedParams = { ...(cfg.params || {}) } as Record<string, number | string | boolean>
+        if (selectedRune?.params) Object.assign(mergedParams, selectedRune.params)
+        executeEffectByRef(effectRef, { scene: ctx.scene, caster: ctx.caster }, mergedParams)
+      }
       break
   }
 }
@@ -79,6 +109,7 @@ function executeProjectile(cfg: SkillConfig, ctx: SkillContext): void {
   }
   const p = (ctx.scene.physics as any).add.sprite(originX, originY, 'projectile')
   p.setDepth(1)
+  try { p.setDataEnabled(); p.setData('faction', 'player'); p.setData('element', String(cfg.element || 'physical')); p.setData('source', 'ranged') } catch {}
   ctx.scene.time.delayedCall(0, () => {
     if ((p as any).active && (p as any).body) p.setVelocity(nx * speed, ny * speed)
   })
@@ -108,6 +139,6 @@ function executeAoe(cfg: SkillConfig, ctx: SkillContext): void {
   const x = ctx.caster.x, y = ctx.caster.y
   const g = (ctx.scene.add as any).graphics({ x: 0, y: 0 })
   g.fillStyle(0xff8888, 0.5); g.fillCircle(x, y, radius)
-  ctx.onAoeDamage?.(x, y, radius, damage)
+  ctx.onAoeDamage?.(x, y, radius, damage, { element: String(cfg.element || 'physical'), source: 'spell' })
   ctx.scene.time.delayedCall(120, () => g.destroy())
 }

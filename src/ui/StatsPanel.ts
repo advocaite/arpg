@@ -5,7 +5,29 @@ export type StatsPanelData = {
   className?: string
   level?: number
   base: { strength: number; vitality: number; intelligence: number; dexterity: number }
-  secondary: { armor?: number; resistAll?: number; damageMultiplier?: number; critChance?: number; attackSpeed?: number }
+  secondary: {
+    armor?: number
+    resistAll?: number
+    damageMultiplier?: number
+    critChance?: number
+    critDamageMult?: number
+    attackSpeed?: number
+    moveSpeedMult?: number
+    magicFindPct?: number
+    healthPerSecond?: number
+    healthOnHit?: number
+    globeMagnetRadius?: number
+    goldMagnetRadius?: number
+    dodgeChance?: number
+    blockChance?: number
+    blockAmount?: number
+    crowdControlReductionPct?: number
+    eliteDamageReductionPct?: number
+    meleeDamageReductionPct?: number
+    rangedDamageReductionPct?: number
+    thornsDamage?: number
+    areaDamagePct?: number
+  }
 }
 
 export default class StatsPanel {
@@ -36,9 +58,17 @@ export default class StatsPanel {
     const sec = data.secondary
     const dm = sec.damageMultiplier ? `x${sec.damageMultiplier.toFixed(2)}` : 'x1.00'
     const crit = sec.critChance ? `${Math.round(sec.critChance * 100)}%` : '0%'
+    const critDmg = sec.critDamageMult ? `${Math.round((sec.critDamageMult - 1) * 100)}%` : '50%'
     const atkSpd = sec.attackSpeed ? `${(sec.attackSpeed).toFixed(2)}x` : '1.00x'
-    lines.push(`Armor: ${sec.armor ?? 0}  Resist: ${sec.resistAll ?? 0}`)
-    lines.push(`Dmg Mult: ${dm}  Crit: ${crit}  AtkSpd: ${atkSpd}`)
+    const moveSpd = sec.moveSpeedMult ? `${(sec.moveSpeedMult * 100).toFixed(0)}%` : '100%'
+    lines.push(`Armor: ${sec.armor ?? 0}  Resist: ${sec.resistAll ?? 0}  Move: ${moveSpd}`)
+    lines.push(`Dmg Mult: ${dm}  Crit: ${crit}  CritDmg: ${critDmg}  AtkSpd: ${atkSpd}`)
+    lines.push(`Magic Find: ${Math.round((sec.magicFindPct ?? 0) * 100)}%  HPS: ${sec.healthPerSecond ?? 0}  HoH: ${sec.healthOnHit ?? 0}`)
+    lines.push(`GlobeMag: ${sec.globeMagnetRadius ?? 0}  GoldMag: ${sec.goldMagnetRadius ?? 0}`)
+    lines.push(`Dodge: ${Math.round((sec.dodgeChance ?? 0) * 100)}%  Block: ${Math.round((sec.blockChance ?? 0) * 100)}%  BlockAmt: ${sec.blockAmount ?? 0}`)
+    lines.push(`CC Red: ${Math.round((sec.crowdControlReductionPct ?? 0) * 100)}%  Elite DR: ${Math.round((sec.eliteDamageReductionPct ?? 0) * 100)}%`)
+    lines.push(`Melee DR: ${Math.round((sec.meleeDamageReductionPct ?? 0) * 100)}%  Ranged DR: ${Math.round((sec.rangedDamageReductionPct ?? 0) * 100)}%`)
+    lines.push(`Thorns: ${sec.thornsDamage ?? 0}  Area Dmg: ${Math.round((sec.areaDamagePct ?? 0) * 100)}%`)
     this.text.setText(lines.join('\n'))
     const padding = 12
     const bounds = this.text.getBounds()

@@ -1,8 +1,101 @@
 {
-    "skills": [
-        { "id": "skill_ring", "name": "Ring Shot", "type": "projectile", "params": { "pattern": "ring", "count": 12, "speed": 280, "decayMs": 3000 } },
-        { "id": "skill_shoot", "name": "Shoot", "type": "projectile", "params": { "pattern": "single", "speed": 320, "decayMs": 2000 } },
-        { "id": "skill_dash", "name": "Dash Strike", "type": "dash", "cooldownMs": 1400, "params": { "distance": 200, "duration": 140 } },
-        { "id": "skill_mine", "name": "Landmine", "type": "projectile", "params": { "pattern": "mine", "fuseMs": 1200, "radius": 80, "damage": 10 } }
+    "skills": [{
+            "id": "skill_ring",
+            "name": "Ring Shot",
+            "type": "projectile",
+            "classRestriction": "all",
+            "element": "physical",
+            "powerRef": "projectile.ring",
+            "params": { "pattern": "ring", "count": 12, "speed": 280, "decayMs": 3000 },
+            "runes": [
+                { "id": "r_fast", "name": "Rapid Orbs", "description": "+20% speed", "params": { "speed": 336 } },
+                { "id": "r_more", "name": "More Projectiles", "description": "+6 orbs", "params": { "count": 18 } }
+            ]
+        },
+        {
+            "id": "skill_shoot",
+            "name": "Shoot",
+            "type": "projectile",
+            "classRestriction": "all",
+            "element": "physical",
+            "powerRef": "projectile.shoot",
+            "params": { "pattern": "single", "speed": 320, "decayMs": 2000 },
+            "runes": [
+                { "id": "r_pierce", "name": "Pierce", "description": "Projectiles pierce 1", "params": { "pierce": 1 } },
+                { "id": "r_fire", "name": "Flaming Arrow", "description": "Convert to fire", "params": { "element": "fire" } }
+            ]
+        },
+        {
+            "id": "skill_dash",
+            "name": "Dash Strike",
+            "type": "dash",
+            "classRestriction": "all",
+            "element": "physical",
+            "powerRef": "movement.dash",
+            "cooldownMs": 1400,
+            "params": { "distance": 200, "duration": 140 },
+            "runes": [
+                { "id": "r_long", "name": "Long Dash", "description": "+30% distance", "params": { "distance": 260 } },
+                { "id": "r_cold", "name": "Chilling Dash", "description": "Convert to cold for later chills", "params": { "element": "cold" } }
+            ]
+        },
+        {
+            "id": "skill_mine",
+            "name": "Landmine",
+            "type": "projectile",
+            "classRestriction": "all",
+            "element": "arcane",
+            "powerRef": "projectile.mine",
+            "params": { "pattern": "mine", "fuseMs": 1200, "radius": 80, "damage": 10 },
+            "runes": [
+                { "id": "r_bigger", "name": "Bigger Boom", "description": "+30% radius", "params": { "radius": 104 } },
+                { "id": "r_lightning", "name": "Storm Mine", "description": "Convert to lightning", "params": { "element": "lightning" } }
+            ]
+        },
+        {
+            "id": "skill_chain_lightning",
+            "name": "Chain Lightning",
+            "type": "projectile",
+            "classRestriction": "all",
+            "element": "lightning",
+            "powerRef": "lightning.chain",
+            "effectRef": "fx.lightningBolt",
+            "cooldownMs": 900,
+            "params": { "bounces": 4, "range": 300, "damage": 8, "effectRef": "fx.lightningBolt" },
+            "runes": [
+                { "id": "r_more_bounces", "name": "Arc Overload", "description": "+2 bounces", "params": { "bounces": 6 } },
+                { "id": "r_long_range", "name": "Long Reach", "description": "+80 range", "params": { "range": 380 } }
+            ]
+        },
+        {
+            "id": "skill_cone_shot",
+            "name": "Cone Shot",
+            "type": "projectile",
+            "classRestriction": "all",
+            "element": "physical",
+            "powerRef": "projectile.cone",
+            "effectRef": "fx.ringPulse",
+            "cooldownMs": 700,
+            "params": { "count": 5, "spreadDeg": 50, "speed": 300, "decayMs": 1600 },
+            "runes": [
+                { "id": "r_tight", "name": "Tight Spread", "description": "Narrower cone", "params": { "spreadDeg": 25 } },
+                { "id": "r_wide", "name": "Wide Spread", "description": "Wider cone", "params": { "spreadDeg": 80 } }
+            ]
+        },
+        {
+            "id": "skill_poison_pool",
+            "name": "Poison Pool",
+            "type": "aoe",
+            "classRestriction": "all",
+            "element": "poison",
+            "powerRef": "ground.pool",
+            "cooldownMs": 1200,
+            "params": { "radius": 90, "durationMs": 5000, "tickMs": 500, "dps": 6, "color": 5635926, "element": "poison" },
+            "runes": [
+                { "id": "r_large", "name": "Large Pool", "description": "+25% radius", "params": { "radius": 112 } },
+                { "id": "r_long", "name": "Lingering Toxin", "description": "+2s duration", "params": { "durationMs": 7000 } },
+                { "id": "r_shock_pool", "name": "Storm Pool", "description": "Converts to lightning and shocks nearby", "params": { "element": "lightning", "color": 6724044, "shock": true, "shockCount": 3, "shockRange": 240 } }
+            ]
+        }
     ]
 }

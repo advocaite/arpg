@@ -1,0 +1,5 @@
+{
+    "effects": [
+        { "ref": "fx.flash", "name": "Flash Tint", "description": "Briefly tint the caster for feedback" }
+    ]
+}

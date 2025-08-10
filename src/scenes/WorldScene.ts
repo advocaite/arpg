@@ -4,17 +4,23 @@ import { CharacterProfile, WorldConfig, PortalConfig, SpawnerConfig } from '@/ty
 import { loadWorldConfig } from '@/systems/WorldLoader'
 import townConfig from '@/data/worlds/town.json'
 import HotbarUI from '@/ui/Hotbar'
+import OrbsUI from '@/ui/Orbs'
 import { loadHotbar, saveHotbar } from '@/systems/Inventory'
 import { computeDerivedStats } from '@/systems/Stats'
 import StatsPanel from '@/ui/StatsPanel'
 import ShopUI from '@/ui/Shop'
 import { listItems } from '@/systems/ItemDB'
-import { getSkill } from '@/systems/SkillDB'
+import { getMonster } from '@/systems/MonsterDB'
+import { getSkill, listSkills } from '@/systems/SkillDB'
+import { upsertCharacter } from '@/systems/SaveSystem'
 import { executeSkill } from '@/systems/SkillRuntime'
 import SkillsMenuUI from '@/ui/SkillsMenu'
 import SkillsOverviewUI from '@/ui/SkillsOverview'
 import skillsRaw from '@/data/skills.json'
+import passivesRaw from '@/data/passives.json'
 import { applyDamageReduction } from '@/systems/Stats'
+import { expRequiredForLevel } from '@/systems/Experience'
+import { executeEffectByRef } from '@/systems/Effects'
 import HoldAction from '@/ui/HoldAction'
 
 export default class WorldScene extends Phaser.Scene {
@@ -32,13 +38,34 @@ export default class WorldScene extends Phaser.Scene {
   private hpText!: Phaser.GameObjects.Text
   private coinText!: Phaser.GameObjects.Text
   private playerHp = 100
+  private maxHp = 100
   private baseMoveSpeed = 220
   private critChance = 0
   private attackSpeedScale = 1
   private armor = 0
   private resistAll = 0
   private damageMultiplier = 1
+  private elementResists: Record<string, number> = {}
+  private meleeDR = 0
+  private rangedDR = 0
+  private eliteDR = 0
+  private dodgeChance = 0
+  private blockChance = 0
+  private blockAmount = 0
+  private critDamageMult = 1.5
+  private healthPerSecond = 0
+  private healthOnHit = 0
+  private magnetRadius = 120
+  private goldMagnetRadius = 120
+  private areaDamagePct = 0
+  private thornsDamage = 0
+  private thornsRadius = 180
+  private regenCarryover = 0
   private level = 1
+  private exp = 0
+  private expBarBg!: Phaser.GameObjects.Rectangle
+  private expBarFg!: Phaser.GameObjects.Rectangle
+  private expText!: Phaser.GameObjects.Text
   private lastMoveDir: Phaser.Math.Vector2 = new Phaser.Math.Vector2(1, 0)
   private attackCooldownMs = 250
   private lastAttackAt = 0
@@ -51,7 +78,8 @@ export default class WorldScene extends Phaser.Scene {
   private projectiles!: Phaser.Physics.Arcade.Group
   private pickups!: Phaser.Physics.Arcade.Group
   private hotbar?: HotbarUI
-  private hotbarCfg: { potionRefId?: string; skillRefIds: (string | undefined)[] } = { potionRefId: undefined, skillRefIds: [] }
+  private orbs?: OrbsUI
+  private hotbarCfg: { potionRefId?: string; primaryRefId?: string; primaryRuneRefId?: string; secondaryRefId?: string; secondaryRuneRefId?: string; skillRefIds: (string | undefined)[]; runeRefIds?: (string | undefined)[] } = { potionRefId: undefined, skillRefIds: [], runeRefIds: [undefined, undefined, undefined, undefined] }
   private statsPanel?: StatsPanel
   private kKey!: Phaser.Input.Keyboard.Key
   private shiftKey!: Phaser.Input.Keyboard.Key
@@ -62,6 +90,7 @@ export default class WorldScene extends Phaser.Scene {
   private respawnKey!: Phaser.Input.Keyboard.Key
   private skillCooldownUntil: number[] = [0, 0, 0, 0]
   private mana = 100
+  private maxMana = 100
   private manaText!: Phaser.GameObjects.Text
   private shopUI?: ShopUI
   private npcs: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody[] = []
@@ -108,6 +137,21 @@ export default class WorldScene extends Phaser.Scene {
     this.hpText = this.add.text(12, 32, `HP: ${this.playerHp}`, { fontFamily: 'monospace', color: '#fff' }).setScrollFactor(0).setDepth(1000)
     this.coinText = this.add.text(12, 52, `Coins: ${Number(localStorage.getItem('coins') || 0) || 0}`, { fontFamily: 'monospace', color: '#ffd166' }).setScrollFactor(0).setDepth(1000)
     this.manaText = this.add.text(12, 72, `Mana: ${this.mana}`, { fontFamily: 'monospace', color: '#66ccff' }).setScrollFactor(0).setDepth(1000)
+    // XP UI
+    const barWidth = Math.floor(this.scale.width * 0.6)
+    const barHeight = 6
+    const barX = Math.floor((this.scale.width - barWidth) / 2)
+    const barY = this.scale.height - 1
+    this.expBarBg = this.add.rectangle(barX, barY, barWidth, barHeight, 0x1a1f36, 0.95).setOrigin(0, 1).setScrollFactor(0).setDepth(1700)
+    this.expBarFg = this.add.rectangle(barX, barY, 1, barHeight, 0x5577ff, 1).setOrigin(0, 1).setScrollFactor(0).setDepth(1701)
+    this.expText = this.add.text(this.scale.width / 2, barY - barHeight / 2, '', { fontFamily: 'monospace', color: '#cfe1ff', fontSize: '11px' }).setOrigin(0.5).setScrollFactor(0).setDepth(1702)
+    this.layoutExpUi()
+    this.updateExpUi()
+    // Re-layout on resize to stay anchored at bottom center
+    this.scale.on('resize', () => { this.layoutExpUi(); this.updateExpUi() })
+
+    // Persist on shutdown
+    this.events.once('shutdown', () => this.persistCharacter())
 
     // Load world config (import for known ids; fetch fallback for others)
     if (this.worldId === 'town' || this.worldId === 'town_default') {
@@ -118,19 +162,67 @@ export default class WorldScene extends Phaser.Scene {
     const w = this.worldConfig.width, h = this.worldConfig.height
     this.physics.world.setBounds(0, 0, w, h)
     this.walls = this.physics.add.staticGroup()
-    this.enemies = this.physics.add.group({ maxSize: 200 })
+    this.enemies = this.physics.add.group({ maxSize: 200, runChildUpdate: false })
     this.projectiles = this.physics.add.group({ maxSize: 100, allowGravity: false })
+    const ENABLE_PROJECTILE_OVERLAP = false // defer registration until after player is created
     this.pickups = this.physics.add.group()
 
-    // Build borders (placeholder until tilemaps)
-    const tile = 32
-    for (let x = 0; x < w; x += tile) { this.walls.create(x + tile / 2, tile / 2, 'wall'); this.walls.create(x + tile / 2, h - tile / 2, 'wall') }
-    for (let y = tile; y < h - tile; y += tile) { this.walls.create(tile / 2, y + tile / 2, 'wall'); this.walls.create(w - tile / 2, y + tile / 2, 'wall') }
+    const ENABLE_WALLS = true
+    if (ENABLE_WALLS) {
+      // Build borders (placeholder until tilemaps) using static physics sprites to guarantee bodies
+      const tile = 32
+      const addWall = (x: number, y: number) => {
+        const s = this.physics.add.staticImage(x, y, 'player').setVisible(false)
+        try { (s as any).refreshBody?.() } catch {}
+        this.walls.add(s)
+        return s
+      }
+      for (let x = 0; x < w; x += tile) { addWall(x + tile / 2, tile / 2); addWall(x + tile / 2, h - tile / 2) }
+      for (let y = tile; y < h - tile; y += tile) { addWall(tile / 2, y + tile / 2); addWall(w - tile / 2, y + tile / 2) }
+      try { (this.walls as any).refresh?.() } catch {}
+      console.log('[World] walls created', (this.walls.getChildren?.() || []).length)
+      // Simple visual border so walls are visible
+      const gw = this.add.graphics({ x: 0, y: 0 })
+      gw.lineStyle(2, 0x3a3a3a, 1)
+      gw.strokeRect(1, 1, w - 2, h - 2)
+      gw.setDepth(5)
+    } else {
+      console.log('[World] walls disabled for debug')
+    }
 
     // Player
     this.player = this.physics.add.sprite(w / 2, h / 2, 'player').setTint(0x55ccff)
     this.player.body.setCircle(12)
     this.player.setCollideWorldBounds(true)
+    this.player.setDataEnabled(); this.player.setData('faction', 'player')
+    // Now that player exists, safely register projectile overlap
+    try {
+      console.log('[World] registering projectile overlap (post-player)')
+      this.physics.add.overlap(this.player, this.projectiles, (_p, proj) => {
+        const tier = 'normal'
+        const isElite = false
+        const incoming = 8
+        const el = ((proj as any).getData?.('element') as string) || 'physical'
+        const source = ((proj as any).getData?.('source') as any) || 'ranged'
+        const reduced = applyDamageReduction(incoming, this.armor, this.resistAll, this.level, {
+          element: el as any,
+          elementResists: this.elementResists as any,
+          source,
+          isElite,
+          dodgeChance: this.dodgeChance,
+          blockChance: this.blockChance,
+          blockAmount: this.blockAmount,
+          meleeDamageReductionPct: this.meleeDR,
+          rangedDamageReductionPct: this.rangedDR,
+          eliteDamageReductionPct: this.eliteDR,
+        })
+        this.playerHp = Math.max(0, this.playerHp - reduced)
+        this.hpText.setText(`HP: ${this.playerHp}`)
+        this.persistCharacter()
+        ;(proj as any).destroy?.()
+        if (this.playerHp <= 0) this.handleDeath()
+      })
+    } catch (e) { console.error('[World] projectile overlap registration failed (post-player)', e) }
     this.isDead = false
     this.invulnerableUntilMs = 0
 
@@ -138,23 +230,72 @@ export default class WorldScene extends Phaser.Scene {
     if (this.character) {
       const s = this.character.stats
       this.level = Number(this.character.level ?? 1)
+      this.exp = Number(this.character.exp ?? 0)
       const d = computeDerivedStats(s, this.character.class, this.level)
-      this.playerHp = 100 + s.vitality * d.lifePerVitality
+      const computedMaxHp = Math.max(1, Math.floor(100 + s.vitality * d.lifePerVitality))
+      this.maxHp = computedMaxHp
+      const persistedHp = Number(this.character.hp ?? computedMaxHp)
+      this.playerHp = Math.max(1, Math.min(this.maxHp, Number.isFinite(persistedHp) ? persistedHp : computedMaxHp))
       this.armor = d.armor
       this.resistAll = d.resistAll
       this.damageMultiplier = d.damageMultiplier
-      // tiny dex QoL bumps
-      this.baseMoveSpeed *= 1 + s.dexterity * 0.005
-      this.attackSpeedScale *= 1 + s.dexterity * 0.005
-      this.critChance += s.dexterity * 0.001
+      this.baseMoveSpeed *= d.moveSpeedMult
+      this.attackSpeedScale *= d.attackSpeedMult
+      this.critChance = d.critChance
+      this.elementResists = d.elementResists as any
+      this.meleeDR = d.meleeDamageReductionPct
+      this.rangedDR = d.rangedDamageReductionPct
+      this.eliteDR = d.eliteDamageReductionPct
+      this.dodgeChance = d.dodgeChance
+      this.blockChance = d.blockChance
+      this.blockAmount = d.blockAmount
+      this.critDamageMult = d.critDamageMult
+      this.healthPerSecond = d.healthPerSecond
+      this.healthOnHit = d.healthOnHit
+      ;(this as any).healthOnKill = d.healthOnKill
+      this.magnetRadius = d.globeMagnetRadius
+      this.goldMagnetRadius = d.goldMagnetRadius
+      this.areaDamagePct = d.areaDamagePct
+      this.thornsDamage = d.thornsDamage
       this.hpText.setText(`HP: ${this.playerHp}`)
+      this.updateExpUi()
+      // Stash the snapshot so it's available on subsequent loads
+      this.character.derived = {
+        damageMultiplier: this.damageMultiplier,
+        armor: this.armor,
+        resistAll: this.resistAll,
+        lifePerVitality: d.lifePerVitality,
+        elementDamageMultipliers: d.elementDamageMultipliers as any,
+        elementResists: d.elementResists as any,
+        moveSpeedMult: this.baseMoveSpeed / 220,
+        attackSpeedMult: this.attackSpeedScale,
+        critChance: this.critChance,
+        critDamageMult: this.critDamageMult,
+        magicFindPct: d.magicFindPct,
+        healthPerSecond: this.healthPerSecond,
+        healthOnHit: this.healthOnHit,
+        globeMagnetRadius: this.magnetRadius,
+        goldMagnetRadius: this.goldMagnetRadius,
+        dodgeChance: this.dodgeChance,
+        blockChance: this.blockChance,
+        blockAmount: this.blockAmount,
+        crowdControlReductionPct: d.crowdControlReductionPct,
+        eliteDamageReductionPct: this.eliteDR,
+        meleeDamageReductionPct: this.meleeDR,
+        rangedDamageReductionPct: this.rangedDR,
+        thornsDamage: this.thornsDamage,
+        areaDamagePct: this.areaDamagePct,
+      }
     }
 
     // Hotbar
     this.hotbarCfg = loadHotbar(this.character?.id ?? 0)
     this.hotbar = new HotbarUI(this)
+    this.orbs = new OrbsUI(this)
     const cfgToUse = (this.hotbarCfg.potionRefId || this.hotbarCfg.skillRefIds.length) ? this.hotbarCfg : { potionRefId: 'potion_small', skillRefIds: ['skill_dash', undefined, undefined, undefined] as (string | undefined)[] }
     this.hotbar.mount(cfgToUse)
+    this.orbs.mount({ hotbarBounds: this.hotbar.getBounds(), hp: this.playerHp, maxHp: this.maxHp, mana: this.mana, maxMana: this.maxMana })
+    this.scale.on('resize', () => this.orbs?.relayout(this.hotbar?.getBounds()))
     this.hotbar.setOnSkillClick(() => this.openSkillsOverview())
     this.hotbar.setOnPrimaryClick(() => this.openSkillsOverview())
     this.hotbar.setOnSecondaryClick(() => this.openSkillsOverview())
@@ -180,8 +321,31 @@ export default class WorldScene extends Phaser.Scene {
     }
 
     // Colliders & Camera
-    this.physics.add.collider(this.player, this.walls)
-    this.physics.add.collider(this.enemies, this.walls)
+    if (ENABLE_WALLS) {
+      try {
+        const wallsChildren = ((this.walls.getChildren?.() || []) as any[]).filter(c => !!c && !!(c as any).body)
+        if (wallsChildren.length > 0) {
+          let pc = 0, ec = 0
+          for (const wChild of wallsChildren) {
+            try { this.physics.add.collider(this.player, wChild); pc++ } catch (e) { console.warn('[World] player-wall collider fail', e) }
+            try { this.physics.add.collider(this.enemies, wChild); ec++ } catch (e) { console.warn('[World] enemies-wall collider fail', e) }
+          }
+          console.log('[World] per-wall colliders registered count', pc, ec)
+        } else {
+          console.warn('[World] no walls children; skipping colliders')
+        }
+      } catch (err) {
+        console.error('[World] error adding per-wall colliders', err)
+      }
+    }
+    try {
+      this.physics.world.on('collide', (_o1: any, _o2: any) => {
+        // Occasional debug spam prevention using throttle
+        if ((this as any).__lastCollideLogAt && this.time.now - (this as any).__lastCollideLogAt < 200) return
+        ;(this as any).__lastCollideLogAt = this.time.now
+        console.log('[World] collide event fired', !!_o1, !!_o2)
+      })
+    } catch {}
     this.cameras.main.startFollow(this.player, true, 0.08, 0.08)
 
     // Stats panel
@@ -256,44 +420,149 @@ export default class WorldScene extends Phaser.Scene {
         if (!skill) continue
         const cd = Number(skill.cooldownMs ?? 600)
         this.skillCooldownUntil[i] = nowTs + cd
-        executeSkill(skill, { scene: this, caster: this.player as any, projectiles: this.projectiles, onAoeDamage: (x, y, radius, damage) => {
-          const dxp = this.player.x - x, dyp = this.player.y - y; const dp = Math.hypot(dxp, dyp)
-          if (dp <= radius) {
-            const reduced = applyDamageReduction(damage, this.armor, this.resistAll, this.level)
-            this.playerHp = Math.max(0, this.playerHp - reduced); this.hpText.setText(`HP: ${this.playerHp}`)
-          }
-        } })
+        const runeId = (this.hotbarCfg.runeRefIds || [])[i]
+        const ptr = this.input.activePointer
+        executeSkill(
+          skill,
+          {
+            scene: this,
+            caster: this.player as any,
+            cursor: { x: ptr.worldX, y: ptr.worldY },
+            projectiles: this.projectiles,
+            enemies: this.enemies,
+            onAoeDamage: (x, y, radius, damage, _opts) => {
+              // Damage enemies in radius
+              this.enemies.children.iterate((child): boolean => {
+                const e = child as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody | undefined
+                if (!e || !e.body) return true
+                const dx = e.x - x, dy = e.y - y
+                if (Math.hypot(dx, dy) <= radius) {
+                  const hp = Number(e.getData('hp') || 1)
+                  const newHp = Math.max(0, hp - damage)
+                  e.setData('hp', newHp)
+                  const t = this.add.text(e.x, e.y - 10, `${damage}`, { fontFamily: 'monospace', color: '#77ff77' }).setDepth(900)
+                  this.tweens.add({ targets: t, y: e.y - 26, alpha: 0, duration: 350, onComplete: () => t.destroy() })
+                  if (newHp <= 0) {
+                    // Award XP and persist when kills happen via AoE
+                    this.gainExperience(Math.max(1, Math.floor((Number(e.getData('level') || 1) + 1) * 5)))
+                  }
+                }
+                return true
+              })
+            }
+          },
+          { runeId }
+        )
       }
     }
 
     // Interact
     if (!this.uiModalOpen && Phaser.Input.Keyboard.JustDown(this.eKey)) { console.log('[World] E pressed; attempting talk'); this.tryTalk() }
 
-    // Simple enemy chase
+    // Regen
+    if (!this.isDead && this.healthPerSecond > 0) {
+      this.regenCarryover += (this.healthPerSecond * delta) / 1000
+      if (this.regenCarryover >= 1) {
+        const heal = Math.floor(this.regenCarryover)
+        this.regenCarryover -= heal
+          this.playerHp = Math.min(this.maxHp, this.playerHp + heal)
+        this.hpText.setText(`HP: ${this.playerHp}`)
+        this.orbs?.update(this.playerHp, this.maxHp, this.mana, this.maxMana)
+          this.persistCharacter()
+      }
+    }
+
+    // Enemy brains tick + touch damage
     this.enemies.children.iterate((child): boolean => {
       const enemy = child as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody | undefined
       if (!enemy || !enemy.body) return true
+      // Tick brain if available
+      try {
+        // Lazy import cached at first use
+        const anyScene = this as any
+        if (!anyScene.__monsterTick) {
+          import('@/systems/MonsterRegistry').then(mod => { anyScene.__monsterTick = (mod as any).tickMonster })
+        }
+        const tick: any = anyScene.__monsterTick
+        if (typeof tick === 'function') {
+          tick(this, enemy, { player: this.player as any, projectiles: this.projectiles, enemies: this.enemies, now: this.time.now })
+        }
+      } catch {}
+      // Damage on touch with brief i-frames
       const ex = enemy.x - this.player.x, ey = enemy.y - this.player.y
       const dist = Math.hypot(ex, ey) || 1
-      const spd = (enemy.getData('speed') as number) || 100
-      if (dist > 2) enemy.setVelocity((-ex / dist) * spd, (-ey / dist) * spd)
-      // Damage on touch with brief i-frames
       const now = this.time.now
       if (!this.isDead && now >= this.invulnerableUntilMs && dist < 16) {
         const incoming = 10
-        const reduced = applyDamageReduction(incoming, this.armor, this.resistAll, this.level)
+        const tier = (enemy.getData('tier') as string) || 'normal'
+        const isElite = tier === 'champion' || tier === 'rare' || tier === 'unique'
+        const reduced = applyDamageReduction(incoming, this.armor, this.resistAll, this.level, {
+          element: 'physical' as any,
+          elementResists: this.elementResists as any,
+          source: 'melee',
+          isElite,
+          dodgeChance: this.dodgeChance,
+          blockChance: this.blockChance,
+          blockAmount: this.blockAmount,
+          meleeDamageReductionPct: this.meleeDR,
+          rangedDamageReductionPct: this.rangedDR,
+          eliteDamageReductionPct: this.eliteDR,
+        })
         this.playerHp = Math.max(0, this.playerHp - reduced)
         this.hpText.setText(`HP: ${this.playerHp}`)
+        this.orbs?.update(this.playerHp, this.maxHp, this.mana, 100)
         this.invulnerableUntilMs = now + 500
         this.player.setTint(0xffe066)
         this.time.delayedCall(120, () => this.player.setTint(0x55ccff))
         if (this.playerHp <= 0) this.handleDeath()
+        // Thorns reflect on contact
+        if (this.thornsDamage > 0) {
+          // Reflect to the attacker and also deal AoE around the player
+          const reflect = Math.round(this.thornsDamage)
+          const showHit = (x: number, y: number, dmg: number) => {
+            const t = this.add.text(x, y - 8, `${dmg}`, { fontFamily: 'monospace', color: '#ff8844' }).setDepth(900)
+            this.tweens.add({ targets: t, y: y - 24, alpha: 0, duration: 400, onComplete: () => t.destroy() })
+          }
+          // Hit the attacker
+          showHit(enemy.x, enemy.y, reflect)
+          enemy.destroy()
+          // AoE pulse around the player so ranged also take damage
+          const r = this.thornsRadius
+          const g = (this.add as any).graphics({ x: 0, y: 0 })
+          g.fillStyle(0xff5533, 0.25); g.fillCircle(this.player.x, this.player.y, r)
+          this.time.delayedCall(100, () => g.destroy())
+          this.enemies.children.iterate((child): boolean => {
+            const e = child as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody | undefined
+            if (!e || !e.body) return true
+            const dx = e.x - this.player.x, dy = e.y - this.player.y
+            if (Math.hypot(dx, dy) <= r) {
+              showHit(e.x, e.y, Math.max(1, Math.floor(reflect * 0.5)))
+              e.destroy()
+            }
+            return true
+          })
+        }
+      }
+      return true
+    })
+
+    // Magnet pickups (gold/globes)
+    this.pickups.children.iterate((child): boolean => {
+      const item = child as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody | undefined
+      if (!item || !item.body) return true
+      const dx = this.player.x - item.x, dy = this.player.y - item.y
+      const dist = Math.hypot(dx, dy)
+      const radius = this.magnetRadius // unified for now
+      if (dist < radius && dist > 2) {
+        const nx = dx / dist, ny = dy / dist
+        const pull = 180
+        item.setVelocity(nx * pull, ny * pull)
       }
       return true
     })
   }
 
-  private performAttack(): void {
+  private async performAttack(): Promise<void> {
     const now = this.time.now
     const cooldown = this.attackCooldownMs / Math.max(0.001, this.attackSpeedScale)
     if (now - this.lastAttackAt < cooldown) return
@@ -301,28 +570,26 @@ export default class WorldScene extends Phaser.Scene {
 
     const baseDx = this.lastMoveDir.x || 1
     const baseDy = this.lastMoveDir.y || 0
-
+    const baseAngle = Math.atan2(baseDy, baseDx)
     const strikes = this.multistrike
     for (let i = 0; i < strikes; i++) {
       const angleOffset = (strikes > 1) ? ((i - (strikes - 1) / 2) * 0.2) : 0
-      const cos = Math.cos(angleOffset), sin = Math.sin(angleOffset)
-      const dirX = baseDx * cos - baseDy * sin
-      const dirY = baseDx * sin + baseDy * cos
-      const norm = Math.hypot(dirX, dirY) || 1
-      const hbX = this.player.x + (dirX / norm) * this.attackRangeOffset
-      const hbY = this.player.y + (dirY / norm) * this.attackRangeOffset
-      const hitbox = this.physics.add.sprite(hbX, hbY, 'hitbox').setDepth(1)
-      this.time.delayedCall(100, () => hitbox.destroy())
+      const ang = baseAngle + angleOffset
       const isCrit = Math.random() < this.critChance
-      const dmg = Math.round(10 * this.damageMultiplier * (isCrit ? 1.5 : 1))
-      const onHit: Phaser.Types.Physics.Arcade.ArcadePhysicsCallback = (_o1, o2) => {
-        const target = o2 as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody
-        if ((target as any).isInvulnerable) return
-        target.destroy()
-        const t = this.add.text(hbX, hbY - 10, `${dmg}`, { fontFamily: 'monospace', color: isCrit ? '#ff66ff' : '#ffd166' }).setDepth(900)
-        this.tweens.add({ targets: t, y: hbY - 28, alpha: 0, duration: 450, ease: 'Quad.easeOut', onComplete: () => t.destroy() })
-      }
-      this.physics.add.overlap(hitbox, this.enemies, onHit)
+      const dmg = Math.round(10 * this.damageMultiplier * (isCrit ? this.critDamageMult : 1))
+      // Use power registry for swing
+      try {
+        const anyPowers = await import('@/systems/Powers')
+        const exec = (anyPowers as any).executePowerByRef
+        if (typeof exec === 'function') {
+          exec('melee.swing', { scene: this, caster: this.player as any, enemies: this.enemies }, { skill: { id: 'melee.swing', name: 'Melee', type: 'projectile' } as any, params: { offset: this.attackRangeOffset, angle: ang, damage: dmg, durationMs: 100, isCrit } })
+          // Area proc via power too
+          if (Math.random() < this.areaDamagePct) {
+            exec('aoe.pulse', { scene: this, caster: this.player as any, enemies: this.enemies }, { skill: { id: 'aoe.pulse', name: 'Area', type: 'aoe' } as any, params: { x: this.player.x, y: this.player.y, radius: 60, damage: Math.round(dmg * 0.2), color: 0xffaa66, durationMs: 120 } })
+          }
+        }
+      } catch {}
+      // Health on hit moved into melee power on kill
     }
   }
 
@@ -351,29 +618,46 @@ export default class WorldScene extends Phaser.Scene {
       let spawned = 0
       // Spawn some immediately to ensure activity on entry
       for (let i = 0; i < Math.min(count, 3); i++) {
-        const x = Phaser.Math.Between(40, this.worldConfig!.width - 40)
-        const y = Phaser.Math.Between(40, this.worldConfig!.height - 40)
-        const e = this.physics.add.sprite(x, y, 'player').setTint(0xff5555)
-        e.body.setCircle(12)
-        e.setData('speed', 100)
-        this.enemies.add(e)
+        this.spawnMonsterFromSpawner(s)
         spawned++
       }
       this.time.delayedCall(start, () => {
         const evt = this.time.addEvent({ delay: every, loop: true, callback: () => {
           for (let i = 0; i < count; i++) {
-            const x = Phaser.Math.Between(40, this.worldConfig!.width - 40)
-            const y = Phaser.Math.Between(40, this.worldConfig!.height - 40)
-            const e = this.physics.add.sprite(x, y, 'player').setTint(0xff5555)
-            e.body.setCircle(12)
-            e.setData('speed', 100)
-            this.enemies.add(e)
+            this.spawnMonsterFromSpawner(s)
             spawned++
             if (limit > 0 && spawned >= limit) { evt.remove(false); break }
           }
         } })
       })
     }
+  }
+
+  private spawnMonsterFromSpawner(spec: SpawnerConfig): void {
+    // pick id from pool or fixed id
+    const id = (spec.monsterPool && spec.monsterPool.length) ? spec.monsterPool[Math.floor(Math.random() * spec.monsterPool.length)] : spec.monsterId
+    const cfg = getMonster(id)
+    const x = Phaser.Math.Between(40, this.worldConfig!.width - 40)
+    const y = Phaser.Math.Between(40, this.worldConfig!.height - 40)
+    const e = this.physics.add.sprite(x, y, 'player').setTint(cfg?.tint ?? 0xff5555)
+    e.body.setCircle(cfg?.bodyRadius ?? 12)
+    e.setDataEnabled()
+    if (cfg) {
+      e.setData('configId', cfg.id)
+      e.setData('brainId', cfg.brainId || cfg.behavior)
+      // Scale stats by player level
+      const lvl = this.level || 1
+      const hp = Math.round((cfg.hp || 10) * (1 + lvl * 0.5))
+      const spd = Math.round((cfg.speed || 80) * (1 + lvl * 0.02))
+      e.setData('speed', spd)
+      e.setData('hp', hp)
+      e.setData('level', lvl)
+      if (cfg.params) Object.keys(cfg.params).forEach(k => e.setData(k, (cfg.params as any)[k]))
+      if (cfg.skills) e.setData('skills', cfg.skills)
+      if (cfg.tier) e.setData('tier', cfg.tier)
+      if (cfg.affixes) e.setData('affixes', cfg.affixes)
+    }
+    this.enemies.add(e)
   }
 
   // Dash (Arena-like)
@@ -462,13 +746,21 @@ export default class WorldScene extends Phaser.Scene {
       const Cls = (mod as any).default
       this.skillsOverview = new Cls(this)
     }
-    const skills = (skillsRaw as any).skills.map((s: any) => ({ id: s.id, name: s.name }))
-    const current = { primary: (this.hotbarCfg as any).primaryRefId, secondary: (this.hotbarCfg as any).secondaryRefId, slots: [...this.hotbarCfg.skillRefIds], passives: [undefined, undefined, undefined, undefined, undefined] as (string | undefined)[] }
+    const skills = listSkills({ class: this.character?.class as any }).map((s: any) => ({ id: s.id, name: s.name, category: s.category, runes: s.runes }))
+    const current = {
+      primary: (this.hotbarCfg as any).primaryRefId,
+      primaryRune: (this.hotbarCfg as any).primaryRuneRefId,
+      secondary: (this.hotbarCfg as any).secondaryRefId,
+      secondaryRune: (this.hotbarCfg as any).secondaryRuneRefId,
+      slots: [...this.hotbarCfg.skillRefIds],
+      runes: [...(this.hotbarCfg.runeRefIds || new Array(4).fill(undefined))],
+      passives: [undefined, undefined, undefined, undefined, undefined] as (string | undefined)[]
+    }
     this.uiModalOpen = true
     this.hotbar?.setAllowSkillClick(false)
     this.skillsOverview!.open({
       skillsList: skills,
-      passivesList: [{ id: 'pass_a', name: 'Ruthless' }, { id: 'pass_b', name: 'Berserker Rage' }],
+      passivesList: ((passivesRaw as any).passives || []).filter((p: any) => !p.classRestriction || p.classRestriction === 'all' || p.classRestriction === (this.character?.class || 'melee')).map((p: any) => ({ id: p.id, name: p.name })),
       current,
       onUpdate: (next) => {
         console.log('[Overview] Accept next', JSON.stringify(next))
@@ -477,8 +769,11 @@ export default class WorldScene extends Phaser.Scene {
         next.slots = next.slots.map(v => (v == null ? undefined : v))
         console.log('[Overview] Slots before', JSON.stringify(before), 'after', JSON.stringify(next.slots))
         ;(this.hotbarCfg as any).primaryRefId = next.primary
+        ;(this.hotbarCfg as any).primaryRuneRefId = next.primaryRune
         ;(this.hotbarCfg as any).secondaryRefId = next.secondary
+        ;(this.hotbarCfg as any).secondaryRuneRefId = next.secondaryRune
         this.hotbarCfg.skillRefIds = next.slots
+        this.hotbarCfg.runeRefIds = next.runes
         const charId = this.character?.id ?? 0
         console.log('[Overview] Persist hotbar char', charId, 'cfg', JSON.stringify(this.hotbarCfg))
         saveHotbar(charId, this.hotbarCfg)
@@ -494,7 +789,7 @@ export default class WorldScene extends Phaser.Scene {
     await this.openSkillsOverview()
     // re-open overview immediately with focus on a specific action slot
     const skills = (skillsRaw as any).skills.map((s: any) => ({ id: s.id, name: s.name }))
-    const current = { primary: this.hotbarCfg.skillRefIds[0], secondary: this.hotbarCfg.skillRefIds[1], slots: [...this.hotbarCfg.skillRefIds], passives: [undefined, undefined, undefined, undefined, undefined] as (string | undefined)[] }
+    const current = { primary: this.hotbarCfg.skillRefIds[0], secondary: this.hotbarCfg.skillRefIds[1], slots: [...this.hotbarCfg.skillRefIds], runes: [...(this.hotbarCfg.runeRefIds || new Array(4).fill(undefined))], passives: [undefined, undefined, undefined, undefined, undefined] as (string | undefined)[] }
     this.skillsOverview!.open({
       skillsList: skills,
       passivesList: [{ id: 'pass_a', name: 'Ruthless' }, { id: 'pass_b', name: 'Berserker Rage' }],
@@ -503,6 +798,7 @@ export default class WorldScene extends Phaser.Scene {
         if (typeof next.primary !== 'undefined') next.slots[0] = next.primary
         if (typeof next.secondary !== 'undefined') next.slots[1] = next.secondary
         this.hotbarCfg.skillRefIds = next.slots
+        this.hotbarCfg.runeRefIds = next.runes
         const charId = this.character?.id ?? 0
         saveHotbar(charId, this.hotbarCfg)
         this.hotbar?.mount(this.hotbarCfg)
@@ -540,14 +836,24 @@ export default class WorldScene extends Phaser.Scene {
     this.deathText?.destroy(); this.deathText = undefined
     this.restartHold?.destroy(); this.restartHold = undefined
     this.isDead = false
-    // Restore defaults
-    this.playerHp = Math.max(50, this.playerHp)
+    // Restore defaults (persist hp)
+    // Clamp HP to max when respawning
+    this.playerHp = Math.max(1, Math.min(this.maxHp, this.playerHp))
     this.hpText.setText(`HP: ${this.playerHp}`)
     const pos = this.lastCheckpoint || { x: this.worldConfig!.width / 2, y: this.worldConfig!.height / 2 }
     this.player.setPosition(pos.x, pos.y)
     this.player.setTint(0x55ccff)
     this.player.body.enable = true
     this.invulnerableUntilMs = this.time.now + 1000
+  }
+
+  private persistCharacter(): void {
+    if (!this.character) return
+    try {
+      const next = { ...this.character, level: this.level, exp: this.exp, hp: this.playerHp, mana: this.mana, maxMana: this.maxMana, derived: this.character.derived }
+      upsertCharacter(next as any)
+      this.character = next
+    } catch {}
   }
 
   private updateStatsPanel(): void {
@@ -558,8 +864,53 @@ export default class WorldScene extends Phaser.Scene {
       className: this.character?.class,
       level: this.level,
       base: { strength: s.strength, vitality: s.vitality, intelligence: s.intelligence, dexterity: s.dexterity },
-      secondary: { armor: this.armor, resistAll: this.resistAll, damageMultiplier: this.damageMultiplier, critChance: this.critChance, attackSpeed: this.attackSpeedScale }
+      secondary: {
+        armor: this.armor,
+        resistAll: this.resistAll,
+        damageMultiplier: this.damageMultiplier,
+        critChance: this.critChance,
+        critDamageMult: 1.5,
+        attackSpeed: this.attackSpeedScale,
+        moveSpeedMult: 1, // already applied to movement; display as 100%
+      }
     })
+  }
+
+  private updateExpUi(): void {
+    const need = expRequiredForLevel(this.level)
+    const have = this.exp
+    const frac = Math.max(0, Math.min(1, need > 0 ? have / need : 0))
+    const fullW = this.expBarBg?.width || 220
+    this.expBarFg?.setSize(fullW * frac, this.expBarFg.height)
+    // keep left edge anchored when resizing with origin(0,0.5)
+    this.expBarFg?.setPosition((this.expBarBg?.x as number) || 0, (this.expBarBg?.y as number) || 0)
+    this.expText?.setText(`XP ${have}/${need} (Lv ${this.level})`)
+  }
+
+  private gainExperience(amount: number): void {
+    this.exp += Math.max(0, Math.floor(amount))
+    let need = expRequiredForLevel(this.level)
+    while (need > 0 && this.exp >= need && this.level < 70) {
+      this.exp -= need
+      this.level += 1
+      // Level-up visual
+      try { executeEffectByRef('fx.levelUpBurst', { scene: this, caster: this.player as any }) } catch {}
+      need = expRequiredForLevel(this.level)
+    }
+    this.updateExpUi()
+    this.persistCharacter()
+  }
+
+  private layoutExpUi(): void {
+    const barWidth = Math.floor(this.scale.width * 0.6)
+    const barHeight = 6
+    const barX = Math.floor((this.scale.width - barWidth) / 2)
+    const barY = this.scale.height - 1
+    this.expBarBg?.setSize(barWidth, barHeight)
+    this.expBarBg?.setPosition(barX, barY)
+    this.expBarFg?.setPosition(barX, barY)
+    this.expBarFg?.setSize(Math.max(1, this.expBarFg?.width || 1), barHeight)
+    this.expText?.setPosition(this.scale.width / 2, barY - barHeight / 2)
   }
 }
 

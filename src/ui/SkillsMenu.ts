@@ -114,16 +114,13 @@ export default class SkillsMenuUI {
       runeSelect = this.scene.add.rectangle(0, 0, rCellW, rCellH, 0x00ff00, 0.06).setStrokeStyle(2, 0xffaa00, 0.9).setVisible(false).setScrollFactor(0)
       runesContainer.add(runeHover)
       runesContainer.add(runeSelect)
-      const baseRunes: RuneMeta[] = [
-        { id: 'norune', name: 'No Rune' },
-        { id: 'empty1', name: 'Empty' },
-        { id: 'empty2', name: 'Empty' },
-        { id: 'empty3', name: 'Empty' },
-        { id: 'empty4', name: 'Empty' },
-        { id: 'empty5', name: 'Empty' },
-      ]
-      const list: RuneMeta[] = skill ? baseRunes.concat(((skill.runes as RuneMeta[]) || [])) : baseRunes
-      for (let i = 0; i < Math.min(list.length, 6); i++) {
+      // Build list: always include "No Rune", then up to 5 real runes from data; if fewer, pad with Empty
+      const maxSlots = 6
+      const runeDefs: RuneMeta[] = (skill?.runes as RuneMeta[]) || []
+      const list: RuneMeta[] = [{ id: 'norune', name: 'No Rune' }]
+      for (let i = 0; i < Math.min(runeDefs.length, maxSlots - 1); i++) list.push(runeDefs[i])
+      while (list.length < maxSlots) list.push({ id: `empty${list.length}`, name: 'Empty' })
+      for (let i = 0; i < list.length; i++) {
         const r = list[i]
         const cx = rowX + i * (rCellW + 6) + rCellW / 2
         const cy = rowY

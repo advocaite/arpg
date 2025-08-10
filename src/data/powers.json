@@ -1,0 +1,8 @@
+{
+    "powers": [
+        { "ref": "projectile.shoot", "name": "Shoot Projectile", "description": "Fire a single projectile forward" },
+        { "ref": "projectile.ring", "name": "Ring of Projectiles", "description": "Emit projectiles in a full circle" },
+        { "ref": "movement.dash", "name": "Dash", "description": "Dash quickly in a direction" },
+        { "ref": "aoe.blast", "name": "Area Blast", "description": "Deal damage in an area around the caster" }
+    ]
+}

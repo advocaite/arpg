@@ -70,7 +70,15 @@ export function consumeFromInventory(charId: number, inv: ItemInstance[], itemId
 }
 
 export function loadHotbar(charId: number): HotbarConfig {
-  try { const raw = localStorage.getItem(HOTBAR_KEY(charId)); return raw ? JSON.parse(raw) : { potionRefId: undefined, skillRefIds: [] } } catch { return { potionRefId: undefined, skillRefIds: [] } }
+  try {
+    const raw = localStorage.getItem(HOTBAR_KEY(charId))
+    const base = raw ? JSON.parse(raw) : { potionRefId: undefined, skillRefIds: [] }
+    // ensure new fields exist
+    if (!('runeRefIds' in base)) base.runeRefIds = new Array(4).fill(undefined)
+    return base
+  } catch {
+    return { potionRefId: undefined, skillRefIds: [], runeRefIds: new Array(4).fill(undefined) as (string | undefined)[] }
+  }
 }
 
 export function saveHotbar(charId: number, cfg: HotbarConfig): void {

@@ -1,0 +1,6 @@
+{
+    "passives": [
+        { "id": "pass_ruthless", "name": "Ruthless", "description": "+5% damage", "classRestriction": "all", "effectRef": "stat.buff", "params": { "damageMultiplier": 1.05 } },
+        { "id": "pass_berserker", "name": "Berserker Rage", "description": "+10% move speed when recently hit", "classRestriction": "melee", "effectRef": "conditional.movespeed.onHit", "params": { "moveSpeed": 1.1, "durationMs": 3000 } }
+    ]
+}

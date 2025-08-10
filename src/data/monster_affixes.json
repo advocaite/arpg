@@ -1,0 +1,6 @@
+{
+    "affixes": [
+        { "id": "frenzied", "name": "Frenzied", "description": "+20% move speed, -20% cooldowns", "modifiers": { "speedMult": 1.2, "cooldownMult": 0.8 } },
+        { "id": "shocking", "name": "Shocking", "description": "Occasionally casts Chain Lightning", "powers": [{ "ref": "lightning.chain", "params": { "bounces": 3, "range": 280, "damage": 6, "effectRef": "fx.lightningBolt" }, "chance": 0.05, "cooldownMs": 2500 }] }
+    ]
+}

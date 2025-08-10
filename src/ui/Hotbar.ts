@@ -1,5 +1,6 @@
 import Phaser from 'phaser'
 import type { HotbarConfig } from '@/types'
+import { getSkill } from '@/systems/SkillDB'
 import { getItem } from '@/systems/ItemDB'
 import Tooltip from '@/ui/Tooltip'
 
@@ -14,6 +15,8 @@ export default class HotbarUI {
   private allowSkillClicks = true
   private skillCellNodes: Phaser.GameObjects.Rectangle[] = []
   private tooltip?: Tooltip
+  private barWidth: number = 680
+  private barHeight: number = 40
 
   constructor(scene: Phaser.Scene) { this.scene = scene }
 
@@ -22,12 +25,21 @@ export default class HotbarUI {
     this.cfg = cfg
     try { console.log('[Hotbar] mount cfg', JSON.stringify(this.cfg)) } catch {}
     this.tooltip = new Tooltip(this.scene)
+    const formatSkillWithRune = (skillId?: string, runeId?: string): string => {
+      if (!skillId) return 'Empty'
+      const s = getSkill(skillId)
+      const name = s?.name || skillId
+      if (!runeId || runeId === 'norune') return `${name} — No Rune`
+      const rName = (s?.runes || []).find(r => r.id === runeId)?.name || runeId
+      return `${name} — ${rName}`
+    }
+
 
     const x = this.scene.scale.width / 2
     const y = this.scene.scale.height - 24
 
-    const barWidth = 680
-    const barHeight = 40
+    const barWidth = this.barWidth
+    const barHeight = this.barHeight
     const bg = this.scene.add.rectangle(0, 0, barWidth, barHeight, 0x000000, 0.5).setStrokeStyle(1, 0xffffff, 0.2).setScrollFactor(0)
 
     const cells: Phaser.GameObjects.GameObject[] = []
@@ -58,14 +70,16 @@ export default class HotbarUI {
       const openPicker = (p?: Phaser.Input.Pointer) => { console.log('[Hotbar] click slot', i, 'allow?', this.allowSkillClicks); if (!this.allowSkillClicks) return; p?.event?.stopPropagation?.(); this.onSkillClick?.(i) }
       cellBg.on('pointerup', openPicker)
       cellBg.on('pointerover', (p: Phaser.Input.Pointer) => {
-        const name = ref ? `Slot ${i + 1}: ${ref}` : `Slot ${i + 1}: Empty`
+        const runeId = (this.cfg.runeRefIds || [])[i]
+        const name = `Slot ${i + 1}: ${formatSkillWithRune(ref, runeId)}`
         this.tooltip!.show(name, p.worldX + 12, p.worldY + 12)
       })
       cellBg.on('pointermove', (p: Phaser.Input.Pointer) => this.tooltip!.move(p.worldX + 12, p.worldY + 12))
       cellBg.on('pointerout', () => this.tooltip!.hide())
       icon.setInteractive({ useHandCursor: true }).on('pointerup', openPicker)
       icon.on('pointerover', (p: Phaser.Input.Pointer) => {
-        const name = ref ? `Slot ${i + 1}: ${ref}` : `Slot ${i + 1}: Empty`
+        const runeId = (this.cfg.runeRefIds || [])[i]
+        const name = `Slot ${i + 1}: ${formatSkillWithRune(ref, runeId)}`
         this.tooltip!.show(name, p.worldX + 12, p.worldY + 12)
       })
       icon.on('pointermove', (p: Phaser.Input.Pointer) => this.tooltip!.move(p.worldX + 12, p.worldY + 12))
@@ -81,7 +95,11 @@ export default class HotbarUI {
     const primLabel = this.scene.add.text(primX - 18, -16, 'P', { fontFamily: 'monospace', color: '#ffb366', fontSize: '10px' }).setScrollFactor(0)
     const primIcon = this.scene.add.image(primX, 0, (this as any).cfg.primaryRefId ? 'icon_skill' : 'particle').setDisplaySize(22, 22).setScrollFactor(0)
     primBg.on('pointerup', (p?: Phaser.Input.Pointer) => { if (!this.allowSkillClicks) return; p?.event?.stopPropagation?.(); this.onPrimaryClick?.() })
-    primBg.on('pointerover', (p: Phaser.Input.Pointer) => this.tooltip!.show(`Primary: ${(this as any).cfg.primaryRefId || 'Empty'}`, p.worldX + 12, p.worldY + 12))
+    primBg.on('pointerover', (p: Phaser.Input.Pointer) => {
+      const sid = (this as any).cfg.primaryRefId as (string | undefined)
+      const rid = (this as any).cfg.primaryRuneRefId as (string | undefined)
+      this.tooltip!.show(`Primary: ${formatSkillWithRune(sid, rid)}`, p.worldX + 12, p.worldY + 12)
+    })
     primBg.on('pointermove', (p: Phaser.Input.Pointer) => this.tooltip!.move(p.worldX + 12, p.worldY + 12))
     primBg.on('pointerout', () => this.tooltip!.hide())
 
@@ -89,7 +107,11 @@ export default class HotbarUI {
     const secLabel = this.scene.add.text(secX - 18, -16, 'S', { fontFamily: 'monospace', color: '#ffb366', fontSize: '10px' }).setScrollFactor(0)
     const secIcon = this.scene.add.image(secX, 0, (this as any).cfg.secondaryRefId ? 'icon_skill' : 'particle').setDisplaySize(22, 22).setScrollFactor(0)
     secBg.on('pointerup', (p?: Phaser.Input.Pointer) => { if (!this.allowSkillClicks) return; p?.event?.stopPropagation?.(); this.onSecondaryClick?.() })
-    secBg.on('pointerover', (p: Phaser.Input.Pointer) => this.tooltip!.show(`Secondary: ${(this as any).cfg.secondaryRefId || 'Empty'}`, p.worldX + 12, p.worldY + 12))
+    secBg.on('pointerover', (p: Phaser.Input.Pointer) => {
+      const sid = (this as any).cfg.secondaryRefId as (string | undefined)
+      const rid = (this as any).cfg.secondaryRuneRefId as (string | undefined)
+      this.tooltip!.show(`Secondary: ${formatSkillWithRune(sid, rid)}`, p.worldX + 12, p.worldY + 12)
+    })
     secBg.on('pointermove', (p: Phaser.Input.Pointer) => this.tooltip!.move(p.worldX + 12, p.worldY + 12))
     secBg.on('pointerout', () => this.tooltip!.hide())
 
@@ -108,5 +130,10 @@ export default class HotbarUI {
     this.allowSkillClicks = enabled
     // Also disable interactive on the skill cells to avoid click-through
     this.skillCellNodes.forEach(n => enabled ? n.setInteractive({ useHandCursor: true }) : n.disableInteractive())
+  }
+
+  getBounds(): { x: number; y: number; width: number; height: number } | undefined {
+    if (!this.container) return undefined
+    return { x: this.container.x, y: this.container.y, width: this.barWidth, height: this.barHeight }
   }
 }

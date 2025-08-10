@@ -44,7 +44,9 @@ export default class MainMenuScene extends Phaser.Scene {
 
   private slotLabel(c: CharacterProfile, idx: number): string {
     if (!c.name) return `[${idx + 1}] Empty - press C to create`
-    return `[${idx + 1}] ${c.name} (${c.class}) STR:${c.stats.strength} VIT:${c.stats.vitality} INT:${c.stats.intelligence} DEX:${c.stats.dexterity}`
+    const lvl = Number(c.level || 1)
+    const exp = Number(c.exp || 0)
+    return `[${idx + 1}] ${c.name} (${c.class}) Lv:${lvl} XP:${exp}  STR:${c.stats.strength} VIT:${c.stats.vitality} INT:${c.stats.intelligence} DEX:${c.stats.dexterity}`
   }
 
   private renderSlots(): void {
@@ -127,7 +129,7 @@ export default class MainMenuScene extends Phaser.Scene {
         case 'e': case 'E': stats.intelligence += 1; statsText.setText(this.formatStats(stats)); break
         case 'r': case 'R': stats.dexterity += 1; statsText.setText(this.formatStats(stats)); break
         case 'Enter': {
-          const newProfile: CharacterProfile = { id: c.id, name: (c as any)._tempName ?? c.name, class: classes[classIdx], stats: { ...stats } }
+          const newProfile: CharacterProfile = { id: c.id, name: (c as any)._tempName ?? c.name, class: classes[classIdx], level: c.level || 1, exp: c.exp || 0, hp: c.hp, stats: { ...stats } }
           upsertCharacter(newProfile)
           this.slots = this.ensureThreeSlots(loadCharacters())
           this.input.keyboard?.off('keydown', keydown)
