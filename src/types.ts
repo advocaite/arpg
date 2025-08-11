@@ -31,6 +31,7 @@ export type DerivedStatsSnapshot = {
   critDamageMult: number
   magicFindPct: number
   healthPerSecond: number
+  manaPerSecond?: number
   healthOnHit: number
   globeMagnetRadius: number
   goldMagnetRadius: number

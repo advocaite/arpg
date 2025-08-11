@@ -92,20 +92,30 @@ export default class OrbsUI {
   update(hp: number, maxHp: number, mana: number, maxMana: number): void {
     const hpFrac = Math.max(0, Math.min(1, maxHp > 0 ? hp / maxHp : 0))
     const manaFrac = Math.max(0, Math.min(1, maxMana > 0 ? mana / maxMana : 0))
+    const drawMask = (mask: Phaser.GameObjects.Graphics, center: { x: number; y: number; r: number }, frac: number) => {
+      const anyMask: any = mask as any
+      anyMask.__frac = frac
+      mask.clear(); mask.fillStyle(0xffffff, 1)
+      const h = center.r * 2
+      const filled = h * frac
+      mask.fillRect(center.x - center.r, center.y + center.r - filled, center.r * 2, filled)
+    }
     const tweenMask = (mask?: Phaser.GameObjects.Graphics, center?: { x: number; y: number; r: number }, targetFrac?: number) => {
       if (!mask || !center || targetFrac === undefined) return
       const duration = 160
       const state = { f: 0 }
       // read current by sampling via a hidden property on mask
       const anyMask: any = mask as any
-      const from = typeof anyMask.__frac === 'number' ? anyMask.__frac : 0
+      const hasPrev = typeof anyMask.__frac === 'number'
+      const from = hasPrev ? anyMask.__frac : targetFrac
+      if (!hasPrev) {
+        // First draw: snap immediately to avoid filling from 0
+        drawMask(mask, center, targetFrac)
+        return
+      }
       state.f = from
       this.scene.tweens.add({ targets: state, f: targetFrac, duration, onUpdate: () => {
-        anyMask.__frac = state.f
-        mask.clear(); mask.fillStyle(0xffffff, 1)
-        const h = center.r * 2
-        const filled = h * state.f
-        mask.fillRect(center.x - center.r, center.y + center.r - filled, center.r * 2, filled)
+        drawMask(mask, center, state.f)
       } })
     }
     tweenMask(this.leftMask, this.hpCenter, hpFrac)
@@ -156,7 +166,13 @@ export default class OrbsUI {
     sheen.beginPath(); sheen.arc(x - r * 0.15, y - r * 0.55, r * 0.35, Math.PI * 1.0, Math.PI * 1.7, false); sheen.fillPath()
   }
 
-  unmount(): void { this.container?.destroy(); this.container = undefined; this.leftMask?.destroy(); this.rightMask?.destroy(); this.hpText?.destroy(); this.manaText?.destroy() }
+  unmount(): void {
+    this.container?.destroy(); this.container = undefined
+    try { this.leftMask?.destroy(); this.rightMask?.destroy(); this.hpText?.destroy(); this.manaText?.destroy(); this.hpRim?.destroy(); this.hpSheen?.destroy(); this.hpGlow?.destroy(); this.manaRim?.destroy(); this.manaSheen?.destroy(); this.manaGlow?.destroy(); this.leftCircleClip?.destroy(); this.rightCircleClip?.destroy(); } catch {}
+    this.leftMask = undefined; this.rightMask = undefined; this.hpText = undefined; this.manaText = undefined
+    this.hpRim = undefined; this.hpSheen = undefined; this.hpGlow = undefined; this.manaRim = undefined; this.manaSheen = undefined; this.manaGlow = undefined
+    this.leftCircleClip = undefined; this.rightCircleClip = undefined
+  }
 }
 
 

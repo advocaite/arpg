@@ -1,6 +1,6 @@
 {
     "items": [
-        { "id": "potion_small", "name": "Small Potion", "type": "potion", "rarity": "common", "stackable": true, "maxStack": 20, "params": { "heal": 20 } },
+        { "id": "potion_small", "name": "Small Potion", "type": "potion", "rarity": "common", "stackable": true, "maxStack": 20, "params": { "heal": 20, "cooldownMs": 30000 } },
         { "id": "sword_rusty", "name": "Rusty Sword", "type": "weapon", "subtype": "mainHand", "rarity": "common", "params": { "damage": 5 } },
         { "id": "wand_cracked", "name": "Cracked Wand", "type": "weapon", "subtype": "mainHand", "rarity": "common", "params": { "magicDamage": 5 } },
         { "id": "armor_cloth", "name": "Cloth Armor", "type": "armor", "subtype": "chest", "rarity": "common", "params": { "hp": 10 } },

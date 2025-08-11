@@ -1,12 +1,13 @@
 import Phaser from 'phaser'
 import PauseSystem from '@/systems/PauseSystem'
+import type { SkillConfig } from '@/types'
 import { CharacterProfile, WorldConfig, PortalConfig, SpawnerConfig, ItemInstance, EquipmentConfig, ItemAffixRoll } from '@/types'
 import { loadWorldConfig } from '@/systems/WorldLoader'
 import townConfig from '@/data/worlds/town.json'
 import HotbarUI from '@/ui/Hotbar'
 import InventoryUI from '@/ui/Inventory'
 import OrbsUI from '@/ui/Orbs'
-import { loadHotbar, saveHotbar, loadInventory, saveInventory, loadEquipment, saveEquipment, countItemInInv, canAddItem, addToInventory } from '@/systems/Inventory'
+import { loadHotbar, saveHotbar, loadInventory, saveInventory, loadEquipment, saveEquipment, countItemInInv, canAddItem, addToInventory, consumeFromInventory } from '@/systems/Inventory'
 import { computeDerivedStats } from '@/systems/Stats'
 import StatsPanel from '@/ui/StatsPanel'
 import ShopUI from '@/ui/Shop'
@@ -58,6 +59,7 @@ export default class WorldScene extends Phaser.Scene {
   private blockAmount = 0
   private critDamageMult = 1.5
   private healthPerSecond = 0
+  private manaPerSecond = 0
   private healthOnHit = 0
   private magnetRadius = 120
   private goldMagnetRadius = 120
@@ -83,6 +85,7 @@ export default class WorldScene extends Phaser.Scene {
   private critChanceBonus = 0
   private armorBonusFlat = 0
   private healthPerSecondBonus = 0
+  private damageBonusMult = 1
 
   private portals: Array<{ sprite: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody; cfg: PortalConfig }> = []
   private walls!: Phaser.Physics.Arcade.StaticGroup
@@ -104,6 +107,9 @@ export default class WorldScene extends Phaser.Scene {
   private respawnKey!: Phaser.Input.Keyboard.Key
   private iKey!: Phaser.Input.Keyboard.Key
   private skillCooldownUntil: number[] = [0, 0, 0, 0]
+  private primaryCooldownUntil: number = 0
+  private secondaryCooldownUntil: number = 0
+  private potionCooldownUntil: number = 0
   private mana = 100
   private maxMana = 100
   private manaText!: Phaser.GameObjects.Text
@@ -115,10 +121,15 @@ export default class WorldScene extends Phaser.Scene {
       import('@/systems/NPCConversations').then(mod => {
         import('@/systems/Quests').then(qm => {
           for (const s of this.npcs) {
-            const name = (s.name as string) || (s.getData('name') as string) || 'Shopkeeper'
+            const role = (s.getData('role') as string) || ''
+            // Only show quest icons for whitelisted roles
+            const allowedRoles = new Set(['shopkeeper', 'questgiver'])
+            if (!allowedRoles.has(role)) { const old = this.npcIcons.get(s); if (old) old.destroy(); this.npcIcons.delete(s); continue }
+            const name = (s.getData('name') as string) || (s.name as string)
+            if (!name) { const old = this.npcIcons.get(s); if (old) old.destroy(); this.npcIcons.delete(s); continue }
             const npcId = `npc_${name}`
             const conv = (mod as any).getNpcConversation?.(npcId)
-            if (!conv) continue
+            if (!conv) { const old = this.npcIcons.get(s); if (old) old.destroy(); this.npcIcons.delete(s); continue }
             const summary = (mod as any).summarizeBundleQuests?.(conv.bundleId) || { offers: [], turnins: [] }
             const hasTurnIn = (summary.turnins || []).some((id: string) => (qm as any).getQuestState?.(id)?.completed)
             const hasOffer = (summary.offers || []).some((id: string) => !(qm as any).getQuestState?.(id))
@@ -130,11 +141,23 @@ export default class WorldScene extends Phaser.Scene {
               const t = this.add.text(s.x, s.y - 42, iconChar, { fontFamily: 'monospace', color, fontSize: '18px' }).setOrigin(0.5)
               t.setDepth(1500)
               this.npcIcons.set(s, t)
+            } else {
+              this.npcIcons.delete(s)
             }
           }
         })
       })
     } catch {}
+  }
+
+  private getSkillManaCost(skill: SkillConfig, runeId?: string): number {
+    let cost = Number((skill as any)?.params?.['manaCost'] ?? 0)
+    if (runeId && Array.isArray((skill as any).runes)) {
+      const r = (skill as any).runes.find((rr: any) => rr?.id === runeId)
+      const override = Number(r?.params?.['manaCost'])
+      if (Number.isFinite(override)) cost = override
+    }
+    return Math.max(0, Number.isFinite(cost) ? cost : 0)
   }
   private coins = 0
   private skillsMenu?: SkillsMenuUI
@@ -174,6 +197,8 @@ export default class WorldScene extends Phaser.Scene {
     this.respawnKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER)
     this.qKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Q)
     this.iKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.I)
+    // Disable browser context menu so right-click can be used for skills
+    try { (this.input.mouse as any)?.disableContextMenu?.() } catch {}
     this.numKeys = [
       this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
       this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.TWO),
@@ -184,7 +209,10 @@ export default class WorldScene extends Phaser.Scene {
     // UI
     this.fpsText = this.add.text(12, 12, 'FPS: --', { fontFamily: 'monospace', color: '#6cf' }).setScrollFactor(0).setDepth(1000)
     this.hpText = this.add.text(12, 32, `HP: ${this.playerHp}`, { fontFamily: 'monospace', color: '#fff' }).setScrollFactor(0).setDepth(1000)
-    this.coinText = this.add.text(12, 52, `Coins: ${Number(localStorage.getItem('coins') || 0) || 0}`, { fontFamily: 'monospace', color: '#ffd166' }).setScrollFactor(0).setDepth(1000)
+    // Sync coins from storage so shop UI sees the right amount
+    const savedCoins = Number(localStorage.getItem('coins') || 0) || 0
+    this.coins = savedCoins
+    this.coinText = this.add.text(12, 52, `Coins: ${this.coins}` , { fontFamily: 'monospace', color: '#ffd166' }).setScrollFactor(0).setDepth(1000)
     this.manaText = this.add.text(12, 72, `Mana: ${this.mana}`, { fontFamily: 'monospace', color: '#66ccff' }).setScrollFactor(0).setDepth(1000)
     // XP UI
     const barWidth = Math.floor(this.scale.width * 0.6)
@@ -201,6 +229,11 @@ export default class WorldScene extends Phaser.Scene {
 
     // Persist on shutdown
     this.events.once('shutdown', () => this.persistCharacter())
+    // Also persist when sleeping/pausing (scene switches) to retain current HP
+    try {
+      this.events.on(Phaser.Scenes.Events.SLEEP, () => this.persistCharacter())
+      this.events.on(Phaser.Scenes.Events.PAUSE, () => this.persistCharacter())
+    } catch {}
     this.events.once('shutdown', () => { try { this.bgm?.stop(); this.bgm?.destroy(); this.bgm = undefined } catch {} })
 
     // Load world config (import for known ids; fetch fallback for others)
@@ -249,6 +282,9 @@ export default class WorldScene extends Phaser.Scene {
     try {
       console.log('[World] registering projectile overlap (post-player)')
       this.physics.add.overlap(this.player, this.projectiles, (_p, proj) => {
+        // Only enemy projectiles can harm the player
+        const faction = (proj as any).getData?.('faction') || 'unknown'
+        if (faction === 'player') { return }
         const tier = 'normal'
         const isElite = false
         const incoming = 8
@@ -276,6 +312,15 @@ export default class WorldScene extends Phaser.Scene {
     this.isDead = false
     this.invulnerableUntilMs = 0
 
+    // Refresh character from storage to pick up latest hp/mana persisted
+    if (this.character && typeof this.character.id === 'number') {
+      try {
+        const sm = await import('@/systems/SaveSystem')
+        const list = (sm as any).loadCharacters?.() || []
+        const fresh = list.find((c: any) => c && c.id === this.character!.id)
+        if (fresh) this.character = fresh
+      } catch {}
+    }
     // Derived stats (HP/move feel)
     if (this.character) {
       const s = this.character.stats
@@ -285,7 +330,8 @@ export default class WorldScene extends Phaser.Scene {
       const computedMaxHp = Math.max(1, Math.floor(100 + s.vitality * d.lifePerVitality))
       this.maxHp = computedMaxHp
       const persistedHp = Number(this.character.hp ?? computedMaxHp)
-      this.playerHp = Math.max(1, Math.min(this.maxHp, Number.isFinite(persistedHp) ? persistedHp : computedMaxHp))
+      // Do not clamp to base max here; equipment effects may raise max HP. Clamp after applying gear.
+      this.playerHp = Math.max(1, Number.isFinite(persistedHp) ? persistedHp : computedMaxHp)
       this.armor = d.armor
       this.resistAll = d.resistAll
       this.damageMultiplier = d.damageMultiplier
@@ -301,6 +347,7 @@ export default class WorldScene extends Phaser.Scene {
       this.blockAmount = d.blockAmount
       this.critDamageMult = d.critDamageMult
       this.healthPerSecond = d.healthPerSecond
+      this.manaPerSecond = 0
       this.healthOnHit = d.healthOnHit
       ;(this as any).healthOnKill = d.healthOnKill
       this.magnetRadius = d.globeMagnetRadius
@@ -323,6 +370,7 @@ export default class WorldScene extends Phaser.Scene {
         critDamageMult: this.critDamageMult,
         magicFindPct: d.magicFindPct,
         healthPerSecond: this.healthPerSecond,
+        manaPerSecond: this.manaPerSecond,
         healthOnHit: this.healthOnHit,
         globeMagnetRadius: this.magnetRadius,
         goldMagnetRadius: this.goldMagnetRadius,
@@ -344,6 +392,7 @@ export default class WorldScene extends Phaser.Scene {
     this.equipment = loadEquipment(charId)
     this.hotbarCfg = loadHotbar(charId)
     this.hotbar = new HotbarUI(this)
+    if (this.orbs) { try { this.orbs.unmount() } catch {} }
     this.orbs = new OrbsUI(this)
     const cfgToUse = (this.hotbarCfg.potionRefId || this.hotbarCfg.skillRefIds.length) ? this.hotbarCfg : { potionRefId: 'potion_small', skillRefIds: ['skill_dash', undefined, undefined, undefined] as (string | undefined)[] }
     this.hotbar.mount(cfgToUse)
@@ -355,10 +404,15 @@ export default class WorldScene extends Phaser.Scene {
     this.hotbar.setOnSkillClick(() => this.openSkillsOverview())
     this.hotbar.setOnPrimaryClick(() => this.openSkillsOverview())
     this.hotbar.setOnSecondaryClick(() => this.openSkillsOverview())
+    this.hotbar.setOnPotionClick(() => this.openPotionPicker())
     // Inventory UI instance
     this.invUI = new InventoryUI(this)
     // Apply equipment effects at start
     this.applyEquipmentEffects()
+    // After equipment bumps maxHp, clamp persisted hp to new max
+    this.playerHp = Math.max(1, Math.min(this.maxHp, this.playerHp))
+    this.hpText?.setText(`HP: ${this.playerHp}`)
+    this.orbs?.update(this.playerHp, this.maxHp, this.mana, this.maxMana)
     // Instantiate Shop UI
     try { this.shopUI = new ShopUI(this) } catch {}
 
@@ -481,9 +535,42 @@ export default class WorldScene extends Phaser.Scene {
 
     // Keybinds after UI created
     this.input.keyboard?.on('keydown-I', () => { if (!this.uiModalOpen) { this.openInventory() } })
+    // Mouse bindings: LMB casts slot 1, RMB casts slot 2
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      if (this.uiModalOpen) return
+      if (p.button === 0) { this.tryCastPrimary(p); return }
+      if (p.button === 2) { this.tryCastSecondary(p); return }
+    })
+  }
+
+  private openPotionPicker(): void {
+    // Build a list of potion items in inventory
+    const potions: { id: string; name: string; lore?: string }[] = []
+    for (const it of this.inventory) {
+      if (!it) continue
+      const base = getItem(it.itemId)
+      if (!base || base.type !== 'potion') continue
+      potions.push({ id: base.id, name: base.name || base.id, lore: base.lore })
+    }
+    // De-dupe by id
+    const seen = new Set<string>()
+    const unique = potions.filter(p => (seen.has(p.id) ? false : (seen.add(p.id), true)))
+    this.hotbar?.openPotionPicker(unique, (id) => {
+      const charId = this.character?.id ?? 0
+      this.hotbarCfg.potionRefId = id
+      saveHotbar(charId, this.hotbarCfg)
+      this.hotbar?.mount(this.hotbarCfg)
+      try { this.hotbar?.setPotionCount(countItemInInv(this.inventory, id)) } catch {}
+    })
   }
 
   private teleport(p: PortalConfig): void {
+    // Ensure current HP (and other runtime fields) are persisted before scene switch
+    let nextChar = this.character ? { ...this.character, hp: this.playerHp, mana: this.mana, maxMana: this.maxMana } : undefined
+    if (nextChar) {
+      try { import('@/systems/SaveSystem').then(mod => { (mod as any).upsertCharacter?.(nextChar) }) } catch {}
+      this.character = nextChar
+    }
     const payload = { character: this.character }
     console.log('[World] teleport via portal', p.id, 'to', p.destinationScene, p.destinationId)
     if (p.destinationScene === 'World' && p.destinationId) {
@@ -530,14 +617,35 @@ export default class WorldScene extends Phaser.Scene {
     }
 
     if (!this.uiModalOpen && Phaser.Input.Keyboard.JustDown(this.cursors.space!)) this.performAttack()
-    // Suppress attack on UI clicks (respect Hotbar clicks)
-    if (!this.uiModalOpen && this.input.activePointer.isDown && this.input.activePointer.y < this.scale.height - 60) this.performAttack()
 
     // Hotbar: Q (potion), 1-4 skills
     if (Phaser.Input.Keyboard.JustDown(this.qKey) && this.hotbarCfg.potionRefId) {
-      // For now, just restore a small amount like Arena
-      this.playerHp = Math.min(this.playerHp + 20, 999)
-      this.hpText.setText(`HP: ${this.playerHp}`)
+      const potId = this.hotbarCfg.potionRefId
+      const have = countItemInInv(this.inventory, potId)
+      if (have > 0) {
+        const base = getItem(potId)
+        const heal = Math.max(0, Number(base?.params?.['heal'] ?? 20))
+        const potCd = Math.max(0, Number(base?.params?.['cooldownMs'] || 0))
+        const nowTs = this.time.now
+        if (potCd > 0 && nowTs < this.potionCooldownUntil) {
+          // still cooling down; ignore
+          return
+        }
+        this.playerHp = Math.min(this.maxHp, this.playerHp + heal)
+        this.hpText.setText(`HP: ${this.playerHp}`)
+        this.orbs?.update(this.playerHp, this.maxHp, this.mana, this.maxMana)
+        // consume one
+        const charId = this.character?.id ?? 0
+        this.inventory = consumeFromInventory(charId, this.inventory, potId, 1)
+        saveInventory(charId, this.inventory)
+        try { this.hotbar?.setPotionCount(countItemInInv(this.inventory, potId)) } catch {}
+        if (potCd > 0) {
+          this.potionCooldownUntil = nowTs + potCd
+          try { this.hotbar?.startCooldown('potion', 0, potCd) } catch {}
+        }
+      } else {
+        // optional: feedback (flash?) when no potion
+      }
     }
     for (let i = 0; i < 4; i++) {
       if (!this.uiModalOpen && Phaser.Input.Keyboard.JustDown(this.numKeys[i])) {
@@ -548,8 +656,13 @@ export default class WorldScene extends Phaser.Scene {
         const skill = getSkill(skillId)
         if (!skill) continue
         const cd = Number(skill.cooldownMs ?? 600)
-        this.skillCooldownUntil[i] = nowTs + cd
         const runeId = (this.hotbarCfg.runeRefIds || [])[i]
+        const manaCost = this.getSkillManaCost(skill, runeId)
+        if (this.mana < manaCost) continue
+        this.mana = Math.max(0, this.mana - manaCost)
+        this.manaText?.setText(`Mana: ${this.mana}`)
+        this.skillCooldownUntil[i] = nowTs + cd
+        try { this.hotbar?.startCooldown('slot', i, cd) } catch {}
         const ptr = this.input.activePointer
         executeSkill(
           skill,
@@ -599,16 +712,24 @@ export default class WorldScene extends Phaser.Scene {
     // Interact
     if (!this.uiModalOpen && Phaser.Input.Keyboard.JustDown(this.eKey)) { console.log('[World] E pressed; attempting talk'); this.tryTalk(); return }
 
-    // Regen
-    if (!this.isDead && this.healthPerSecond > 0) {
-      this.regenCarryover += (this.healthPerSecond * delta) / 1000
-      if (this.regenCarryover >= 1) {
-        const heal = Math.floor(this.regenCarryover)
-        this.regenCarryover -= heal
+    // Regen (health and mana)
+    if (!this.isDead) {
+      if (this.healthPerSecond > 0) {
+        this.regenCarryover += (this.healthPerSecond * delta) / 1000
+        if (this.regenCarryover >= 1) {
+          const heal = Math.floor(this.regenCarryover)
+          this.regenCarryover -= heal
           this.playerHp = Math.min(this.maxHp, this.playerHp + heal)
-        this.hpText.setText(`HP: ${this.playerHp}`)
-        this.orbs?.update(this.playerHp, this.maxHp, this.mana, this.maxMana)
+          this.hpText.setText(`HP: ${this.playerHp}`)
+          this.orbs?.update(this.playerHp, this.maxHp, this.mana, this.maxMana)
           this.persistCharacter()
+        }
+      }
+      if (this.manaPerSecond > 0) {
+        const manaGain = (this.manaPerSecond * delta) / 1000
+        this.mana = Math.min(this.maxMana, this.mana + manaGain)
+        this.manaText?.setText(`Mana: ${Math.round(this.mana)}`)
+        this.orbs?.update(this.playerHp, this.maxHp, this.mana, this.maxMana)
       }
     }
 
@@ -829,6 +950,8 @@ export default class WorldScene extends Phaser.Scene {
     this.critChanceBonus = 0
     this.armorBonusFlat = 0
     this.healthPerSecondBonus = 0
+    this.manaPerSecond = 0
+    this.damageBonusMult = 1
     // Scan all equip slots and aggregate params + affixes
     const slots: Array<{ key: keyof EquipmentConfig | string; type: 'weapon' | 'armor' }> = [
       { key: 'mainHandId', type: 'weapon' },
@@ -876,7 +999,7 @@ export default class WorldScene extends Phaser.Scene {
       }
       const d = computeDerivedStats(tot, this.character.class, this.level)
       // Update key combat fields to reflect equipment stat changes
-      this.damageMultiplier = d.damageMultiplier
+      this.damageMultiplier = d.damageMultiplier * Math.max(0.001, this.damageBonusMult)
       this.armor = d.armor + Math.max(0, this.armorBonusFlat)
       this.resistAll = d.resistAll
       this.critChance = d.critChance + Math.max(0, this.critChanceBonus)
@@ -897,9 +1020,44 @@ export default class WorldScene extends Phaser.Scene {
     this.playerHp = Math.min(this.playerHp, this.maxHp)
     this.hpText?.setText(`HP: ${this.playerHp}`)
     this.orbs?.update(this.playerHp, this.maxHp, this.mana, this.maxMana)
+    // Persist updated derived snapshot including mana regen for K panel and reloads
+    if (this.character) {
+      try {
+        const prev = this.character.derived || ({} as any)
+        this.character.derived = {
+          damageMultiplier: this.damageMultiplier,
+          armor: this.armor,
+          resistAll: this.resistAll,
+          lifePerVitality: prev.lifePerVitality ?? 10,
+          elementDamageMultipliers: prev.elementDamageMultipliers ?? ({} as any),
+          elementResists: prev.elementResists ?? ({} as any),
+          moveSpeedMult: this.baseMoveSpeed / 220,
+          attackSpeedMult: this.attackSpeedScale,
+          critChance: this.critChance,
+          critDamageMult: this.critDamageMult,
+          magicFindPct: prev.magicFindPct ?? this.magicFindBonusPct,
+          healthPerSecond: this.healthPerSecond,
+          manaPerSecond: this.manaPerSecond,
+          healthOnHit: prev.healthOnHit ?? 0,
+          globeMagnetRadius: this.magnetRadius,
+          goldMagnetRadius: this.goldMagnetRadius,
+          dodgeChance: this.dodgeChance,
+          blockChance: this.blockChance,
+          blockAmount: this.blockAmount,
+          crowdControlReductionPct: prev.crowdControlReductionPct ?? 0,
+          eliteDamageReductionPct: this.eliteDR,
+          meleeDamageReductionPct: this.meleeDR,
+          rangedDamageReductionPct: this.rangedDR,
+          thornsDamage: this.thornsDamage,
+          areaDamagePct: this.areaDamagePct,
+        }
+      } catch {}
+    }
   }
 
   private applyAffixRolls(rolls: ItemAffixRoll[], slotType: 'weapon' | 'armor'): void {
+    // Accumulate mana regen inside this scope when called during applyEquipmentEffects
+    let localManaRegen = 0
     for (const r of rolls) {
       const cfg = getAffix(r.affixId)
       const val = typeof r.value === 'number' ? r.value : 0
@@ -908,11 +1066,13 @@ export default class WorldScene extends Phaser.Scene {
         if (key === 'hp' || key === 'sec_hp') { this.bonusMaxHp += val; continue }
         if (key === 'healthOnKill' || key === 'hok') { (this as any).healthOnKill = (this as any).healthOnKill + val; continue }
         if (key === 'healthPerSecond') { this.healthPerSecondBonus += val; continue }
+        if (key === 'manaPerSecond') { localManaRegen += val; this.manaPerSecond = Math.max(0, (this.manaPerSecond || 0) + val); continue }
         if (key === 'attackSpeedMult') { this.attackSpeedBonusMult *= (cfg.valueType === 'percent' ? (1 + val / 100) : (1 + val)); continue }
         if (key === 'critChance') { this.critChanceBonus += (cfg.valueType === 'percent' ? (val / 100) : val); continue }
         if (key === 'areaDamagePct') { this.areaDamagePct += (cfg.valueType === 'percent' ? val / 100 : val); continue }
         if (key === 'magicFindPct') { this.magicFindBonusPct += (cfg.valueType === 'percent' ? val / 100 : val); continue }
         if (key === 'armor') { this.armorBonusFlat += val; continue }
+        if (key === 'damageMultiplier' || key === 'attackDamageMult' || key === 'attackDamagePct') { this.damageBonusMult *= (cfg.valueType === 'percent' ? (1 + val / 100) : (1 + val)); continue }
         // Primary stats or generic stat additive
         this.bonusStats[key] = (this.bonusStats[key] || 0) + val
         continue
@@ -926,6 +1086,7 @@ export default class WorldScene extends Phaser.Scene {
       if (r.affixId === 'sec_armor') this.armorBonusFlat += val
       if (r.affixId === 'sec_area') this.areaDamagePct += (val / 100)
       if (r.affixId === 'sec_mf') this.magicFindBonusPct += (val / 100)
+      if (r.affixId === 'sec_dmg') this.damageBonusMult *= (1 + (val / 100))
       if (r.affixId === 'pri_strength') this.bonusStats['strength'] = (this.bonusStats['strength'] || 0) + val
       if (r.affixId === 'pri_dexterity') this.bonusStats['dexterity'] = (this.bonusStats['dexterity'] || 0) + val
       if (r.affixId === 'pri_intelligence') this.bonusStats['intelligence'] = (this.bonusStats['intelligence'] || 0) + val
@@ -1112,10 +1273,19 @@ export default class WorldScene extends Phaser.Scene {
         import('@/systems/Inventory').then(mod => {
           this.inventory = (mod as any).addToInventory(charId, this.inventory, it.id, 1, { magicFindPct: Math.max(0, Number(this.character?.derived?.magicFindPct ?? 0)) })
           saveInventory(charId, this.inventory)
+          // If buying potions, refresh hotbar count when the bought id matches current potionRefId
+          const potId = this.hotbarCfg.potionRefId
+          const base = getItem(it.id)
+          if (potId && base?.type === 'potion' && potId === it.id) {
+            try { this.hotbar?.setPotionCount(countItemInInv(this.inventory, potId)) } catch {}
+          }
         })
       } catch {}
       localStorage.setItem('coins', String(this.coins))
       this.coinText.setText(`Coins: ${this.coins}`)
+      try { this.shopUI?.setCoins(this.coins) } catch {}
+      // If currently in shop, refresh title now
+      try { (this as any).shopUI?.setCoins?.(this.coins) } catch {}
       // Disable hotbar interactions while shop is open
       try { this.hotbar?.setAllowSkillClick(false) } catch {}
       return true
@@ -1135,6 +1305,8 @@ export default class WorldScene extends Phaser.Scene {
         this.coins += value
         localStorage.setItem('coins', String(this.coins))
         this.coinText.setText(`Coins: ${this.coins}`)
+        try { this.shopUI?.setCoins(this.coins) } catch {}
+        try { (this as any).shopUI?.setCoins?.(this.coins) } catch {}
         // Persist inventory
         const charId = this.character?.id ?? 0
         saveInventory(charId, this.inventory)
@@ -1148,6 +1320,127 @@ export default class WorldScene extends Phaser.Scene {
     const onShopClose = () => { try { this.hotbar?.setAllowSkillClick(true); this.uiModalOpen = false } catch {} }
     const esc = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.ESC)
     esc?.once('down', () => onShopClose())
+  }
+
+  // Mouse/Hotbar casting entry. If the chosen slot has no skill, fall back to melee swing toward cursor.
+  private tryCastSkillSlot(slotIndex: number, pointer?: Phaser.Input.Pointer): void {
+    if (this.uiModalOpen) return
+    const nowMs = this.time.now
+    if (nowMs < (this.skillCooldownUntil[slotIndex] || 0)) return
+
+    const ptr = pointer || this.input.activePointer
+    const cursor = { x: ptr.worldX, y: ptr.worldY }
+    const skillId = this.hotbarCfg.skillRefIds[slotIndex]
+    if (!skillId) {
+      // Fallback: melee swing toward cursor
+      this.castFallbackMelee(cursor)
+      return
+    }
+    const skill = getSkill(skillId)
+    if (!skill) { this.castFallbackMelee(cursor); return }
+    const cd = Number(skill.cooldownMs ?? 600)
+    this.skillCooldownUntil[slotIndex] = nowMs + cd
+    const runeId = (this.hotbarCfg.runeRefIds || [])[slotIndex]
+    executeSkill(
+      skill,
+      {
+        scene: this,
+        caster: this.player as any,
+        cursor,
+        projectiles: this.projectiles,
+        enemies: this.enemies,
+        onAoeDamage: (x, y, radius, damage, _opts) => {
+          // Damage enemies in radius (same as keyboard path)
+          this.enemies.children.iterate((child): boolean => {
+            const e = child as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody | undefined
+            if (!e || !e.body) return true
+            const dx = e.x - x, dy = e.y - y
+            if (Math.hypot(dx, dy) <= radius) {
+              const hp = Number(e.getData('hp') || 1)
+              const newHp = Math.max(0, hp - damage)
+              e.setData('hp', newHp)
+              const t = this.add.text(e.x, e.y - 10, `${damage}`, { fontFamily: 'monospace', color: '#77ff77' }).setDepth(900)
+              this.tweens.add({ targets: t, y: e.y - 26, alpha: 0, duration: 350, onComplete: () => t.destroy() })
+              if (newHp <= 0) {
+                try { console.log('[Kill] AoE death', { source: 'onAoeDamage', monsterId: String(e.getData('configId')||''), level: e.getData('level'), radius, damage }) } catch {}
+                this.gainExperience(Math.max(1, Math.floor((Number(e.getData('level') || 1) + 1) * 5)))
+                try { notifyMonsterKilled(String(e.getData('configId') || '')); (this as any).refreshQuestUI?.() } catch {}
+                try {
+                  const anyScene: any = this
+                  if (!anyScene.__dropUtil) { import('@/systems/DropSystem').then(mod => { anyScene.__dropUtil = mod }) }
+                  const util = anyScene.__dropUtil
+                  if (util?.playerKillDrop) util.playerKillDrop(anyScene, e.x, e.y, 0.1)
+                } catch {}
+                e.destroy()
+              }
+            }
+            return true
+          })
+        }
+      },
+      { runeId }
+    )
+  }
+
+  private tryCastPrimary(pointer?: Phaser.Input.Pointer): void {
+    const id = (this.hotbarCfg as any).primaryRefId
+    const runeId = (this.hotbarCfg as any).primaryRuneRefId
+    const ptr = pointer || this.input.activePointer
+    const cursor = { x: ptr.worldX, y: ptr.worldY }
+    if (!id) { this.castFallbackMelee(cursor); return }
+    const skill = getSkill(id)
+    if (!skill) { this.castFallbackMelee(cursor); return }
+    const now = this.time.now
+    if (now < this.primaryCooldownUntil) return
+    const cd = Number(skill.cooldownMs ?? 600)
+    const manaCost = this.getSkillManaCost(skill, runeId)
+    if (this.mana < manaCost) { this.castFallbackMelee(cursor); return }
+    this.mana = Math.max(0, this.mana - manaCost)
+    this.manaText?.setText(`Mana: ${this.mana}`)
+    this.primaryCooldownUntil = now + cd
+    // Provide cursor to powers that need precise direction (e.g., projectile.shoot)
+    executeSkill(skill, { scene: this, caster: this.player as any, cursor, projectiles: this.projectiles, enemies: this.enemies }, { runeId })
+    try { this.hotbar?.startCooldown('primary', 0, cd) } catch {}
+  }
+
+  private tryCastSecondary(pointer?: Phaser.Input.Pointer): void {
+    const id = (this.hotbarCfg as any).secondaryRefId
+    const runeId = (this.hotbarCfg as any).secondaryRuneRefId
+    if (!id) return
+    const skill = getSkill(id)
+    if (!skill) return
+    const now = this.time.now
+    if (now < this.secondaryCooldownUntil) return
+    const ptr = pointer || this.input.activePointer
+    const cursor = { x: ptr.worldX, y: ptr.worldY }
+    const cd = Number(skill.cooldownMs ?? 600)
+    const manaCost = this.getSkillManaCost(skill, runeId)
+    if (this.mana < manaCost) return
+    this.mana = Math.max(0, this.mana - manaCost)
+    this.manaText?.setText(`Mana: ${this.mana}`)
+    this.secondaryCooldownUntil = now + cd
+    executeSkill(skill, { scene: this, caster: this.player as any, cursor, projectiles: this.projectiles, enemies: this.enemies }, { runeId })
+    try { this.hotbar?.startCooldown('secondary', 0, cd) } catch {}
+  }
+
+  private async castFallbackMelee(cursor: { x: number; y: number }): Promise<void> {
+    // Compute angle to cursor and use the same damage model as performAttack
+    const dx = cursor.x - this.player.x
+    const dy = cursor.y - this.player.y
+    const ang = Math.atan2(dy, dx)
+    const isCrit = Math.random() < this.critChance
+    const base = 10 + Math.max(0, this.weaponFlatDamage)
+    const dmg = Math.round(base * this.damageMultiplier * (isCrit ? this.critDamageMult : 1))
+    try {
+      const anyPowers = await import('@/systems/Powers')
+      const exec = (anyPowers as any).executePowerByRef
+      if (typeof exec === 'function') {
+        exec('melee.swing', { scene: this, caster: this.player as any, enemies: this.enemies }, { skill: { id: 'melee.swing', name: 'Melee', type: 'projectile' } as any, params: { offset: this.attackRangeOffset, angle: ang, damage: dmg, durationMs: 100, isCrit, spreadDeg: 75, radius: 36 } })
+        if (Math.random() < this.areaDamagePct) {
+          exec('aoe.pulse', { scene: this, caster: this.player as any, enemies: this.enemies }, { skill: { id: 'aoe.pulse', name: 'Area', type: 'aoe' } as any, params: { x: this.player.x, y: this.player.y, radius: 60, damage: Math.round(dmg * 0.2), color: 0xffaa66, durationMs: 120 } })
+        }
+      }
+    } catch {}
   }
 
   private openSkillSelect(slotIndex: number): void {
@@ -1314,6 +1607,10 @@ export default class WorldScene extends Phaser.Scene {
         critDamageMult: 1.5,
         attackSpeed: this.attackSpeedScale,
         moveSpeedMult: 1, // already applied to movement; display as 100%
+        // Inject MPS for display
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        manaPerSecond: this.manaPerSecond,
       }
     })
   }

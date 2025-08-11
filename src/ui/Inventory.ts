@@ -158,7 +158,9 @@ export default class InventoryUI {
     eqNodes.push(...drawSlot('offHandId', offHand, 'Off', this.equipment.offHandId ? 'icon_weapon' : null, 'weapon', 'offHand'))
 
     this.hoverOutline = this.scene.add.rectangle(0, 0, this.gridMeta.cell, this.gridMeta.cell, 0x66ccff, 0.08).setStrokeStyle(2, 0x66ccff, 0.9).setVisible(false)
-    this.container = this.scene.add.container(x, y, [bg, ...cells, equipBg, ...eqNodes, this.hoverOutline, ...labels, hint]).setScrollFactor(0).setDepth(2000)
+    // Compose children so that icons render above cell backgrounds
+    const gridIcons: Phaser.GameObjects.Image[] = [...this.iconNodes]
+    this.container = this.scene.add.container(x, y, [bg, ...cells, ...gridIcons, equipBg, ...eqNodes, this.hoverOutline, ...labels, hint]).setScrollFactor(0).setDepth(2000)
     console.log('[Inventory] open with equipment', this.equipment)
 
     this.moveHandler = (p: Phaser.Input.Pointer) => this.onPointerMove(p)

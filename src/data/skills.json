@@ -9,7 +9,8 @@
             "params": { "pattern": "ring", "count": 12, "speed": 280, "decayMs": 3000 },
             "runes": [
                 { "id": "r_fast", "name": "Rapid Orbs", "description": "+20% speed", "params": { "speed": 336 } },
-                { "id": "r_more", "name": "More Projectiles", "description": "+6 orbs", "params": { "count": 18 } }
+                { "id": "r_more", "name": "More Projectiles", "description": "+6 orbs", "params": { "count": 18 } },
+                { "id": "r_orbit", "name": "Orbiting Orbs", "description": "Orbs orbit the player and heal on hit", "params": { "orbit": true, "orbitRadius": 64, "orbitSpeedDeg": 220, "healOnHit": 2 } }
             ]
         },
         {
@@ -19,7 +20,7 @@
             "classRestriction": "all",
             "element": "physical",
             "powerRef": "projectile.shoot",
-            "params": { "pattern": "single", "speed": 320, "decayMs": 2000 },
+            "params": { "pattern": "single", "speed": 320, "decayMs": 2000, "manaCost": 10 },
             "runes": [
                 { "id": "r_pierce", "name": "Pierce", "description": "Projectiles pierce 1", "params": { "pierce": 1 } },
                 { "id": "r_fire", "name": "Flaming Arrow", "description": "Convert to fire", "params": { "element": "fire" } }
@@ -46,7 +47,7 @@
             "classRestriction": "all",
             "element": "arcane",
             "powerRef": "projectile.mine",
-            "params": { "pattern": "mine", "fuseMs": 1200, "radius": 80, "damage": 10 },
+            "params": { "pattern": "mine", "fuseMs": 1200, "radius": 80, "damage": 10, "manaCost": 15 },
             "runes": [
                 { "id": "r_bigger", "name": "Bigger Boom", "description": "+30% radius", "params": { "radius": 104 } },
                 { "id": "r_lightning", "name": "Storm Mine", "description": "Convert to lightning", "params": { "element": "lightning" } }
@@ -61,7 +62,7 @@
             "powerRef": "lightning.chain",
             "effectRef": "fx.lightningBolt",
             "cooldownMs": 900,
-            "params": { "bounces": 4, "range": 300, "damage": 8, "effectRef": "fx.lightningBolt" },
+            "params": { "bounces": 4, "range": 300, "damage": 8, "effectRef": "fx.lightningBolt", "manaCost": 18 },
             "runes": [
                 { "id": "r_more_bounces", "name": "Arc Overload", "description": "+2 bounces", "params": { "bounces": 6 } },
                 { "id": "r_long_range", "name": "Long Reach", "description": "+80 range", "params": { "range": 380 } }
@@ -76,7 +77,7 @@
             "powerRef": "projectile.cone",
             "effectRef": "fx.ringPulse",
             "cooldownMs": 700,
-            "params": { "count": 5, "spreadDeg": 50, "speed": 300, "decayMs": 1600 },
+            "params": { "count": 5, "spreadDeg": 50, "speed": 300, "decayMs": 1600, "manaCost": 12 },
             "runes": [
                 { "id": "r_tight", "name": "Tight Spread", "description": "Narrower cone", "params": { "spreadDeg": 25 } },
                 { "id": "r_wide", "name": "Wide Spread", "description": "Wider cone", "params": { "spreadDeg": 80 } }
@@ -90,11 +91,55 @@
             "element": "poison",
             "powerRef": "ground.pool",
             "cooldownMs": 1200,
-            "params": { "radius": 90, "durationMs": 5000, "tickMs": 500, "dps": 6, "color": 5635926, "element": "poison" },
+            "params": { "radius": 90, "durationMs": 5000, "tickMs": 500, "dps": 6, "color": 5635926, "element": "poison", "manaCost": 20 },
             "runes": [
                 { "id": "r_large", "name": "Large Pool", "description": "+25% radius", "params": { "radius": 112 } },
                 { "id": "r_long", "name": "Lingering Toxin", "description": "+2s duration", "params": { "durationMs": 7000 } },
                 { "id": "r_shock_pool", "name": "Storm Pool", "description": "Converts to lightning and shocks nearby", "params": { "element": "lightning", "color": 6724044, "shock": true, "shockCount": 3, "shockRange": 240 } }
+            ]
+        },
+        {
+            "id": "skill_wall",
+            "name": "Flame Wall",
+            "type": "aoe",
+            "classRestriction": "all",
+            "element": "fire",
+            "powerRef": "aoe.wall",
+            "cooldownMs": 1200,
+            "params": { "length": 200, "width": 36, "growMs": 240, "durationMs": 1000, "tickMs": 140, "color": 16737792, "element": "fire", "manaCost": 16 },
+            "runes": [
+                { "id": "r_long_wall", "name": "Long Wall", "description": "+40% length", "params": { "length": 280 } },
+                { "id": "r_wide_wall", "name": "Wide Wall", "description": "+40% width", "params": { "width": 50 } },
+                { "id": "r_frost_wall", "name": "Frost Wall", "description": "Convert to cold", "params": { "element": "cold", "color": 5592575 } },
+                { "id": "r_cursor_wall", "name": "Cursor Placement", "description": "Place wall at cursor location", "params": { "atCursor": true } }
+            ]
+        },
+        {
+            "id": "skill_zigzag",
+            "name": "Zigzag Shot",
+            "type": "projectile",
+            "classRestriction": "all",
+            "element": "physical",
+            "powerRef": "projectile.zigzag",
+            "cooldownMs": 600,
+            "params": { "speed": 300, "amplitude": 24, "wavelength": 120, "decayMs": 2000, "manaCost": 10 },
+            "runes": [
+                { "id": "r_wide_sway", "name": "Wide Sway", "description": "+50% amplitude", "params": { "amplitude": 36 } },
+                { "id": "r_fire_sway", "name": "Flaming Zigzag", "description": "Convert to fire", "params": { "element": "fire" } }
+            ]
+        },
+        {
+            "id": "skill_follow",
+            "name": "Homing Bolt",
+            "type": "projectile",
+            "classRestriction": "all",
+            "element": "arcane",
+            "powerRef": "projectile.follow",
+            "cooldownMs": 900,
+            "params": { "speed": 240, "turnRate": 8, "decayMs": 2500, "element": "arcane", "manaCost": 14 },
+            "runes": [
+                { "id": "r_fast_turn", "name": "Tight Steering", "description": "+50% turn rate", "params": { "turnRate": 12 } },
+                { "id": "r_lightning_follow", "name": "Storm Seeker", "description": "Convert to lightning", "params": { "element": "lightning" } }
             ]
         }
     ]

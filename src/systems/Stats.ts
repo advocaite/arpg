@@ -89,8 +89,8 @@ export function computeDerivedStats(stats: Stats, charClass: CharacterClass, lev
   const eliteDamageReductionPct = Math.min(0.5, (stats.vitality || 0) * 0.001)
   const meleeDamageReductionPct = Math.min(0.4, (stats.strength || 0) * 0.0005)
   const rangedDamageReductionPct = Math.min(0.4, (stats.dexterity || 0) * 0.0005)
-  const thornsDamage = (stats.strength || 0) * 0.3
-  const areaDamagePct = Math.min(0.5, (stats.intelligence || 0) * 0.001)
+  const thornsDamage = 0
+  const areaDamagePct = 0
 
   return {
     damageMultiplier,

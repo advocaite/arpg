@@ -24,6 +24,22 @@ export default function aoePulse(ctx: PowerContext, args: PowerInvokeArgs): void
         const hp = Number(e.getData('hp') || 1)
         const newHp = Math.max(0, hp - damage)
         e.setData('hp', newHp)
+        // Item procs on hit (AoE)
+        try {
+          const sceneAny: any = ctx.scene
+          if (Array.isArray(sceneAny.itemProcs) && sceneAny.itemProcs.length) {
+            let exec = (sceneAny.__execPower as any)
+            if (typeof exec !== 'function') { import('@/systems/Powers').then((mod) => { sceneAny.__execPower = (mod as any).executePowerByRef }) }
+            exec = (sceneAny.__execPower as any)
+            for (const pr of sceneAny.itemProcs) {
+              if (Math.random() < (pr.procChance || 0)) {
+                if (typeof exec === 'function') {
+                  exec(pr.powerRef, { scene: ctx.scene, caster: ctx.caster, enemies: ctx.enemies }, { skill: { id: pr.powerRef, name: 'Proc', type: 'aoe' } as any, params: pr.powerParams || {} })
+                }
+              }
+            }
+          }
+        } catch {}
         if (newHp <= 0) {
           try {
             const anyScene: any = ctx.scene

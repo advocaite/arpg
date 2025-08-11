@@ -5,6 +5,7 @@ export default class Tooltip {
   private bg?: Phaser.GameObjects.Rectangle
   private text?: Phaser.GameObjects.Text
   private borderColor: number = 0xffffff
+  private boundToSceneEvents = false
 
   constructor(scene: Phaser.Scene) { this.scene = scene }
 
@@ -18,6 +19,15 @@ export default class Tooltip {
     this.bg = this.scene.add.rectangle(x + w / 2, y - h / 2, w, h, 0x000000, 0.85).setStrokeStyle(2, this.borderColor, 0.8)
     this.text.setPosition(this.bg.x - this.text.width / 2, this.bg.y - this.text.height / 2)
     this.bg.setDepth(3000); this.text.setDepth(3001)
+    // Auto-hide on scene shutdown or sleep to avoid lingering tooltips
+    if (!this.boundToSceneEvents) {
+      try {
+        this.scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.hide())
+        this.scene.events.on(Phaser.Scenes.Events.SLEEP, () => this.hide())
+        this.scene.events.on(Phaser.Scenes.Events.PAUSE, () => this.hide())
+        this.boundToSceneEvents = true
+      } catch {}
+    }
   }
 
   move(x: number, y: number): void {

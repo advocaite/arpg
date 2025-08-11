@@ -9,6 +9,7 @@
         { "id": "sec_armor", "category": "secondary", "label": "+Armor", "statKey": "armor", "valueType": "flat", "min": 5, "max": 60, "weight": 8, "allowedTypes": ["armor"] },
         { "id": "sec_hok", "category": "secondary", "label": "+Health on Kill", "statKey": "healthOnKill", "valueType": "flat", "min": 1, "max": 8, "weight": 6 },
         { "id": "sec_hon", "category": "secondary", "label": "+Health per Second", "statKey": "healthPerSecond", "valueType": "flat", "min": 1, "max": 10, "weight": 6 },
+        { "id": "sec_mregen", "category": "secondary", "label": "+Mana per Second", "statKey": "manaPerSecond", "valueType": "flat", "min": 1, "max": 8, "weight": 6, "allowedTypes": ["armor", "weapon"] },
         { "id": "sec_aspd", "category": "secondary", "label": "+Attack Speed", "statKey": "attackSpeedMult", "valueType": "percent", "min": 2, "max": 12, "weight": 6, "allowedTypes": ["weapon"] },
         { "id": "sec_crit", "category": "secondary", "label": "+Crit Chance", "statKey": "critChance", "valueType": "percent", "min": 1, "max": 10, "weight": 4 },
         { "id": "sec_area", "category": "secondary", "label": "+Area Damage", "statKey": "areaDamagePct", "valueType": "percent", "min": 2, "max": 20, "weight": 3 },
