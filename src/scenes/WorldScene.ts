@@ -22,6 +22,7 @@ import skillsRaw from '@/data/skills.json'
 import passivesRaw from '@/data/passives.json'
 import { applyDamageReduction } from '@/systems/Stats'
 import { expRequiredForLevel } from '@/systems/Experience'
+import { notifyMonsterKilled } from '@/systems/Quests'
 import { executeEffectByRef } from '@/systems/Effects'
 import HoldAction from '@/ui/HoldAction'
 import { loadConversationData, getConversationBundle, getNpcConversation, attachGossip } from '@/systems/NPCConversations'
@@ -88,6 +89,7 @@ export default class WorldScene extends Phaser.Scene {
   private orbs?: OrbsUI
   private hotbarCfg: { potionRefId?: string; primaryRefId?: string; primaryRuneRefId?: string; secondaryRefId?: string; secondaryRuneRefId?: string; skillRefIds: (string | undefined)[]; runeRefIds?: (string | undefined)[] } = { potionRefId: undefined, skillRefIds: [], runeRefIds: [undefined, undefined, undefined, undefined] }
   private statsPanel?: StatsPanel
+  private questTracker?: any
   private kKey!: Phaser.Input.Keyboard.Key
   private shiftKey!: Phaser.Input.Keyboard.Key
   private eKey!: Phaser.Input.Keyboard.Key
@@ -102,6 +104,33 @@ export default class WorldScene extends Phaser.Scene {
   private manaText!: Phaser.GameObjects.Text
   private shopUI?: ShopUI
   private npcs: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody[] = []
+  private npcIcons: Map<Phaser.Types.Physics.Arcade.SpriteWithDynamicBody, Phaser.GameObjects.Text> = new Map()
+  private updateAllNpcQuestIcons = (): void => {
+    try {
+      import('@/systems/NPCConversations').then(mod => {
+        import('@/systems/Quests').then(qm => {
+          for (const s of this.npcs) {
+            const name = (s.name as string) || (s.getData('name') as string) || 'Shopkeeper'
+            const npcId = `npc_${name}`
+            const conv = (mod as any).getNpcConversation?.(npcId)
+            if (!conv) continue
+            const summary = (mod as any).summarizeBundleQuests?.(conv.bundleId) || { offers: [], turnins: [] }
+            const hasTurnIn = (summary.turnins || []).some((id: string) => (qm as any).getQuestState?.(id)?.completed)
+            const hasOffer = (summary.offers || []).some((id: string) => !(qm as any).getQuestState?.(id))
+            const iconChar = hasTurnIn ? '?' : (hasOffer ? '!' : '')
+            const old = this.npcIcons.get(s)
+            if (old) old.destroy()
+            if (iconChar) {
+              const color = hasTurnIn ? '#66ff66' : '#ffd166'
+              const t = this.add.text(s.x, s.y - 42, iconChar, { fontFamily: 'monospace', color, fontSize: '18px' }).setOrigin(0.5)
+              t.setDepth(1500)
+              this.npcIcons.set(s, t)
+            }
+          }
+        })
+      })
+    } catch {}
+  }
   private coins = 0
   private skillsMenu?: SkillsMenuUI
   private skillsOverview?: SkillsOverviewUI
@@ -324,6 +353,8 @@ export default class WorldScene extends Phaser.Scene {
     this.invUI = new InventoryUI(this)
     // Apply equipment effects at start
     this.applyEquipmentEffects()
+    // Instantiate Shop UI
+    try { this.shopUI = new ShopUI(this) } catch {}
 
     // Background music per world (looped)
     try {
@@ -364,10 +395,20 @@ export default class WorldScene extends Phaser.Scene {
 
     // NPCs
     await loadConversationData(this)
+    // Load quest defs and mount tracker
+    try {
+      const qMod = await import('@/systems/Quests')
+      qMod.loadQuestDefs(this)
+      const Qt = (await import('@/ui/QuestTracker')).default as any
+      this.questTracker = new Qt(this)
+      this.questTracker.mount()
+      ;(this as any).refreshQuestUI = () => { try { this.questTracker?.refresh?.(); this.updateAllNpcQuestIcons?.() } catch {} }
+    } catch {}
     for (const n of this.worldConfig.npcs) {
       const s = this.physics.add.sprite(n.x, n.y, 'player').setTint(0xffcc66)
       s.body.setCircle(12)
       ;(s as any).isInvulnerable = true
+      try { s.setName?.(n.name); s.setData('name', n.name) } catch {}
       this.add.text(n.x, n.y - 28, n.name, { fontFamily: 'monospace', color: '#ffd166' }).setOrigin(0.5)
       s.setData('role', n.role)
       this.npcs.push(s)
@@ -377,6 +418,8 @@ export default class WorldScene extends Phaser.Scene {
         const cfg = getNpcConversation(npcId)
         if (cfg) attachGossip(this, s as any, cfg)
       } catch {}
+      // Initial quest icons
+      this.updateAllNpcQuestIcons()
     }
 
     // Colliders & Camera
@@ -504,9 +547,20 @@ export default class WorldScene extends Phaser.Scene {
                   e.setData('hp', newHp)
                   const t = this.add.text(e.x, e.y - 10, `${damage}`, { fontFamily: 'monospace', color: '#77ff77' }).setDepth(900)
                   this.tweens.add({ targets: t, y: e.y - 26, alpha: 0, duration: 350, onComplete: () => t.destroy() })
-                  if (newHp <= 0) {
+                   if (newHp <= 0) {
+                    try { console.log('[Kill] AoE death', { source: 'onAoeDamage', monsterId: String(e.getData('configId')||''), level: e.getData('level'), radius, damage }) } catch {}
                     // Award XP and persist when kills happen via AoE
                     this.gainExperience(Math.max(1, Math.floor((Number(e.getData('level') || 1) + 1) * 5)))
+                    // Quest notify + tracker refresh
+                    try { notifyMonsterKilled(String(e.getData('configId') || '')); (this as any).refreshQuestUI?.() } catch {}
+                    // Drop system
+                    try {
+                      const anyScene: any = this
+                      if (!anyScene.__dropUtil) { import('@/systems/DropSystem').then(mod => { anyScene.__dropUtil = mod }) }
+                      const util = anyScene.__dropUtil
+                      if (util?.playerKillDrop) util.playerKillDrop(anyScene, e.x, e.y, 0.1)
+                    } catch {}
+                    e.destroy()
                   }
                 }
                 return true
@@ -519,7 +573,7 @@ export default class WorldScene extends Phaser.Scene {
     }
 
     // Interact
-    if (!this.uiModalOpen && Phaser.Input.Keyboard.JustDown(this.eKey)) { console.log('[World] E pressed; attempting talk'); this.tryTalk() }
+    if (!this.uiModalOpen && Phaser.Input.Keyboard.JustDown(this.eKey)) { console.log('[World] E pressed; attempting talk'); this.tryTalk(); return }
 
     // Regen
     if (!this.isDead && this.healthPerSecond > 0) {
@@ -587,6 +641,7 @@ export default class WorldScene extends Phaser.Scene {
           }
           // Hit the attacker
           showHit(enemy.x, enemy.y, reflect)
+          try { notifyMonsterKilled(String(enemy.getData('configId') || '')); (this as any).refreshQuestUI?.() } catch {}
           enemy.destroy()
           // AoE pulse around the player so ranged also take damage
           const r = this.thornsRadius
@@ -601,6 +656,7 @@ export default class WorldScene extends Phaser.Scene {
               showHit(e.x, e.y, Math.max(1, Math.floor(reflect * 0.5)))
               // Simulate drop on death
               playerKillDrop(this, e.x, e.y, 0.1)
+              try { notifyMonsterKilled(String(e.getData('configId') || '')); (this as any).refreshQuestUI?.() } catch {}
               e.destroy()
             }
             return true
@@ -894,6 +950,15 @@ export default class WorldScene extends Phaser.Scene {
       if (cfg.affixes) e.setData('affixes', cfg.affixes)
     }
     this.enemies.add(e)
+    // Track kills to quests on enemy death via world overlap/thorns etc. handled in powers; here add a safety hook on destroy
+    e.on('destroy', () => {
+      try {
+        const id = (e.getData('configId') as string) || ''
+        if (!id) return
+        try { console.log('[Kill] destroy hook', { monsterId: id }) } catch {}
+        import('@/systems/Quests').then(mod => { (mod as any).notifyMonsterKilled?.(id); this.questTracker?.refresh?.() })
+      } catch {}
+    })
   }
 
   // Dash (Arena-like)
@@ -922,11 +987,24 @@ export default class WorldScene extends Phaser.Scene {
     }
     console.log('[World] tryTalk nearest?', !!nearest.s, 'dist', nearest.d)
     if (!nearest.s || nearest.d > 120) { console.log('[World] no NPC in range to talk; dist', nearest.d); return }
-    const npcName = 'Villager'
+    // Determine which nearby NPC we are targeting
+    const target = nearest.s
+    if (!target) return
     try {
       import('@/systems/NPCConversations').then((mod) => {
-        const cfg = (mod as any).getNpcConversation?.(`npc_Shopkeeper`) || { bundleId: 'bundle_shopkeeper' }
-        ;(mod as any).openConversation?.(this, cfg.bundleId)
+        const idGuess = `npc_${(target as any).name || 'Shopkeeper'}`
+        const cfg = (mod as any).getNpcConversation?.(idGuess) || { bundleId: 'bundle_shopkeeper' }
+        // If there is a completed quest awaiting turn-in, jump directly to the turn-in node
+        import('@/systems/Quests').then(qm => {
+          const summary = (mod as any).summarizeBundleQuests?.(cfg.bundleId) || { turnins: [] }
+          const ready = (summary.turnins || []).find((qid: string) => (qm as any).getQuestState?.(qid)?.completed)
+          if (ready) {
+            const nodeId = (mod as any).findTurnInNode?.(cfg.bundleId, ready)
+            ;(mod as any).openConversation?.(this, cfg.bundleId, nodeId)
+          } else {
+            ;(mod as any).openConversation?.(this, cfg.bundleId)
+          }
+        })
       })
       this.uiModalOpen = true
       this.hotbar?.setAllowSkillClick(false)

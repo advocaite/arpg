@@ -1,3 +1,4 @@
+import { notifyMonsterKilled } from '@/systems/Quests'
 import type { PowerContext, PowerInvokeArgs } from '@/systems/Powers'
 
 export const meta = { ref: 'ground.pool' }
@@ -44,6 +45,11 @@ export default function groundPool(ctx: PowerContext, args: PowerInvokeArgs): vo
               gg.lineStyle(2, 0x66ccff, 0.9); gg.beginPath(); gg.moveTo(x, y); gg.lineTo(e.x, e.y); gg.strokePath(); ctx.scene.time.delayedCall(90, () => gg.destroy())
             } catch {}
             ctx.onAoeDamage?.(e.x, e.y, 0, Math.max(1, Math.floor(dps * 0.6)), { element: 'lightning', source: 'spell' })
+            try {
+              const hp = Number(e.getData('hp') || 1)
+              const newHp = Math.max(0, hp - Math.max(1, Math.floor(dps * 0.6)))
+              if (newHp <= 0) { notifyMonsterKilled(String(e.getData('configId') || '')); (ctx.scene as any).refreshQuestUI?.() }
+            } catch {}
             shocks++
           }
         }

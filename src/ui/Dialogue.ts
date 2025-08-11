@@ -42,7 +42,7 @@ export default class DialogueBox {
   }
 
   private select(opt: DialogueOption): void {
-    try { opt.onSelect() } finally { this.close() }
+    try { opt.onSelect() } catch {} // let the option handler manage closure if needed (e.g., re-open next node)
   }
 
   close(): void {

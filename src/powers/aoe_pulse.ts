@@ -1,5 +1,6 @@
 import type { PowerContext, PowerInvokeArgs } from '@/systems/Powers'
 import { executeEffectByRef } from '@/systems/Effects'
+import { notifyMonsterKilled } from '@/systems/Quests'
 
 export const meta = { ref: 'aoe.pulse' }
 
@@ -26,6 +27,7 @@ export default function aoePulse(ctx: PowerContext, args: PowerInvokeArgs): void
         if (newHp <= 0) {
           try {
             const anyScene: any = ctx.scene
+            try { console.log('[Kill] aoe_pulse death', { monsterId: String(e.getData('configId')||''), level: e.getData('level'), damage }) } catch {}
             const healKill = Math.max(0, Number(anyScene.healthOnKill || 0))
             if (healKill > 0) {
               anyScene.playerHp = Math.min(anyScene.maxHp, anyScene.playerHp + healKill)
@@ -33,6 +35,8 @@ export default function aoePulse(ctx: PowerContext, args: PowerInvokeArgs): void
               anyScene.orbs?.update(anyScene.playerHp, anyScene.maxHp, anyScene.mana, anyScene.maxMana || 100)
             }
             anyScene.gainExperience?.(Math.max(1, Math.floor(((e.getData('level') as number) || 1) * 5)))
+            // Notify quest system of kill
+            try { notifyMonsterKilled(String(e.getData('configId') || '')); (anyScene as any).refreshQuestUI?.() } catch {}
             // Drop chance hook for AoE kills (lazy-load once)
             try {
               if (!(anyScene.__dropUtil)) {

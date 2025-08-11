@@ -1,4 +1,5 @@
 import type { PowerContext, PowerInvokeArgs } from '@/systems/Powers'
+import { notifyMonsterKilled } from '@/systems/Quests'
 
 export const meta = { ref: 'projectile.shoot' }
 
@@ -17,6 +18,15 @@ export default function projectileShoot(ctx: PowerContext, args: PowerInvokeArgs
   ctx.projectiles?.add(p)
   const decayMs = Number(args.params['decayMs'] ?? 2000)
   ctx.scene.time.delayedCall(decayMs, () => p.destroy())
+  try {
+    (ctx.scene.physics as any).add.overlap(p, ctx.enemies, (_p: any, obj: any) => {
+      const enemy = obj as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody
+      const hp = Number(enemy.getData('hp') || 1)
+      const newHp = Math.max(0, hp - 8)
+      enemy.setData('hp', newHp)
+      if (newHp <= 0) { try { notifyMonsterKilled(String(enemy.getData('configId') || '')); (ctx.scene as any).refreshQuestUI?.() } catch {}; enemy.destroy() }
+    })
+  } catch {}
 }
 
 

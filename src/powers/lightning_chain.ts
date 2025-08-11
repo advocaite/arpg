@@ -1,5 +1,6 @@
 import type { PowerContext, PowerInvokeArgs } from '@/systems/Powers'
 import { executeEffectByRef } from '@/systems/Effects'
+import { notifyMonsterKilled } from '@/systems/Quests'
 
 export const meta = { ref: 'lightning.chain' }
 
@@ -31,7 +32,7 @@ export default function lightningChain(ctx: PowerContext, args: PowerInvokeArgs)
       const d = Math.hypot(dx, dy)
       if (d <= range && d < bestDist) { bestDist = d; candidate = t }
     }
-    if (!candidate) break
+      if (!candidate) break
     // Render effect from (fromX, fromY) to candidate
     executeEffectByRef(effectRef, { scene: ctx.scene, caster: ctx.caster }, { x1: fromX, y1: fromY, x2: candidate.x, y2: candidate.y })
     // Apply damage through AoE callback as a point target
@@ -42,9 +43,11 @@ export default function lightningChain(ctx: PowerContext, args: PowerInvokeArgs)
       const newHp = Math.max(0, hp - damage)
       if (newHp <= 0) {
         const anyScene: any = ctx.scene
+          try { console.log('[Kill] lightning_chain death', { monsterId: String(candidate.getData('configId')||''), level: candidate.getData('level'), damage }) } catch {}
         if (!(anyScene.__dropUtil)) { import('@/systems/DropSystem').then(mod => { anyScene.__dropUtil = mod }) }
         const util = anyScene.__dropUtil
         if (util?.playerKillDrop) util.playerKillDrop(anyScene, candidate.x, candidate.y, 0.1)
+        try { notifyMonsterKilled(String(candidate.getData('configId') || '')); (anyScene as any).refreshQuestUI?.() } catch {}
       }
     } catch {}
     visited.add(candidate)

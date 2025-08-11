@@ -11,7 +11,31 @@
                 "options": [
                     { "id": "opt_shop", "label": "Open Shop", "openShop": true },
                     { "id": "opt_news", "label": "Any news?", "nextConversationId": "gossip_1" },
+                    { "id": "opt_quest", "label": "Do you have any work?", "nextConversationId": "quest_offer" },
                     { "id": "opt_bye", "label": "Goodbye" }
+                ]
+            },
+            {
+                "id": "quest_offer",
+                "type": "quest",
+                "title": "Shopkeeper",
+                "lines": [
+                    { "id": "q1", "text": "The roads are unsafe. Cull 100 Chasers in the Arena and I'll make it worth your while." }
+                ],
+                "options": [
+                    { "id": "opt_accept", "label": "Accept: Cull the Chasers", "grantQuestId": "q_hunt_chasers", "nextConversationId": "welcome" },
+                    { "id": "opt_decline", "label": "Not now", "nextConversationId": "welcome" }
+                ]
+            },
+            {
+                "id": "quest_turnin",
+                "type": "quest",
+                "title": "Shopkeeper",
+                "lines": [
+                    { "id": "qt1", "text": "You've done it? Excellent work! Here's your reward." }
+                ],
+                "options": [
+                    { "id": "opt_complete", "label": "Complete quest", "completeQuestId": "q_hunt_chasers", "nextConversationId": "welcome" }
                 ]
             },
             {

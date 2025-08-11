@@ -1,5 +1,6 @@
 import type { PowerContext, PowerInvokeArgs } from '@/systems/Powers'
 import { executeEffectByRef } from '@/systems/Effects'
+import { notifyMonsterKilled } from '@/systems/Quests'
 
 export const meta = { ref: 'melee.swing' }
 
@@ -49,6 +50,7 @@ export default function meleeSwing(ctx: PowerContext, args: PowerInvokeArgs): vo
     if (newHp <= 0) {
       try {
         const anyScene: any = ctx.scene
+        try { console.log('[Kill] melee death', { monsterId: String(target.getData('configId')||''), level: target.getData('level'), damage }) } catch {}
         const healKill = Math.max(0, Number(anyScene.healthOnKill || 0))
         if (healKill > 0) {
           anyScene.playerHp = Math.min(anyScene.maxHp, anyScene.playerHp + healKill)
@@ -57,6 +59,8 @@ export default function meleeSwing(ctx: PowerContext, args: PowerInvokeArgs): vo
         }
         const award = Math.max(1, Math.floor(((target.getData('level') as number) || 1) * 5))
         anyScene.gainExperience?.(award)
+        // Notify quest system of kill
+        try { notifyMonsterKilled(String(target.getData('configId') || '')); (anyScene as any).refreshQuestUI?.() } catch {}
         // Drop chance hook for any player-caused kill (lazy-load once)
         try {
           if (!(anyScene.__dropUtil)) {

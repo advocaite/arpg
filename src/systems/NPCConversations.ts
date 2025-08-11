@@ -68,22 +68,74 @@ export function getNpcConversation(npcId: string): NpcConversationConfig | undef
 export function openConversation(scene: Phaser.Scene, bundleId: string, startId?: string): void {
   const bundle = getConversationBundle(bundleId)
   if (!bundle) return
-  const node = bundle.nodes.find(n => n.id === (startId || 'welcome')) || bundle.nodes[0]
-  if (!node) return
   const anyScene: any = scene as any
-  if (!anyScene.__DialogueCtor) {
-    import('@/ui/Dialogue').then((mod) => { anyScene.__DialogueCtor = (mod as any).default })
+  const openNow = () => {
+    const node = bundle.nodes.find(n => n.id === (startId || 'welcome')) || bundle.nodes[0]
+    if (!node) return
+    const Dialogue = anyScene.__DialogueCtor
+    if (!Dialogue) return
+    const ui = new Dialogue(scene)
+    const lines = node.lines.map(l => l.text)
+    // Read quest state synchronously to gate option visibility
+    let questState: Array<{ id: string; progress: number; completed: boolean }> = []
+    try { questState = JSON.parse(localStorage.getItem('quests.state') || '[]') || [] } catch {}
+    const hasQuest = (id?: string) => !!id && questState.some(q => q.id === id)
+    const isCompleted = (id?: string) => !!id && questState.some(q => q.id === id && q.completed)
+    const opts = (node.options || [])
+      .filter(o => {
+        if (o.grantQuestId && hasQuest(o.grantQuestId)) return false
+        if (o.completeQuestId && !isCompleted(o.completeQuestId)) return false
+        return true
+      })
+      .map(o => ({ label: o.label, onSelect: () => {
+      if (o.openShop) {
+        try {
+          // Close dialogue first, then open shop and mark modal open
+          ui.close()
+          ;(scene as any).uiModalOpen = true
+          ;(scene as any).openShop?.()
+        } catch {}
+        return
+      }
+      if (o.grantQuestId) {
+        try { import('@/systems/Quests').then(mod => { (mod as any).grantQuest?.(o.grantQuestId); (scene as any).refreshQuestUI?.() }) } catch {}
+      }
+      if (o.completeQuestId) {
+        try { import('@/systems/Quests').then(mod => { (mod as any).completeQuestIfReady?.(scene, o.completeQuestId, { onReward: () => (scene as any).refreshQuestUI?.() }) }) } catch {}
+      }
+      if (o.nextConversationId) { ui.close(); openConversation(scene, bundleId, o.nextConversationId); return }
+      // If no next, close the dialogue to avoid stacking
+      ui.close();
+    } }))
+    ui.open(node.title || 'Conversation', lines, opts, () => { try { (scene as any).uiModalOpen = false; (scene as any).hotbar?.setAllowSkillClick(true); (scene as any).refreshQuestUI?.() } catch {} })
   }
-  const Dialogue = anyScene.__DialogueCtor
-  if (!Dialogue) return
-  const ui = new Dialogue(scene)
-  const lines = node.lines.map(l => l.text)
-  const opts = (node.options || []).map(o => ({ label: o.label, onSelect: () => {
-    if (o.openShop) try { (scene as any).openShop?.() } catch {}
-    else if (o.nextConversationId) openConversation(scene, bundleId, o.nextConversationId)
-    // TODO: openRepair/openCraft/grantQuest/completeQuest hooks
-  } }))
-  ui.open(node.title || 'Conversation', lines, opts)
+  if (!anyScene.__DialogueCtor) {
+    import('@/ui/Dialogue').then((mod) => { anyScene.__DialogueCtor = (mod as any).default; openNow() })
+  } else {
+    openNow()
+  }
+}
+
+export function summarizeBundleQuests(bundleId: string): { offers: string[]; turnins: string[] } {
+  const result = { offers: [] as string[], turnins: [] as string[] }
+  const b = bundles[bundleId]
+  if (!b) return result
+  for (const n of b.nodes) {
+    for (const o of (n.options || [])) {
+      if (o.grantQuestId) result.offers.push(o.grantQuestId)
+      if (o.completeQuestId) result.turnins.push(o.completeQuestId)
+    }
+  }
+  return result
+}
+
+export function findTurnInNode(bundleId: string, questId: string): string | undefined {
+  const b = bundles[bundleId]
+  if (!b) return undefined
+  for (const n of b.nodes) {
+    if ((n.options || []).some(o => o.completeQuestId === questId)) return n.id
+  }
+  return undefined
 }
 
 // Lightweight gossip driver (attach per NPC sprite)

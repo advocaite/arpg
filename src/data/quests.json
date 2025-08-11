@@ -1,0 +1,15 @@
+{
+    "quests": [{
+        "id": "q_hunt_chasers",
+        "name": "Cull the Chasers",
+        "description": "Enter the Arena and slay 100 Chaser minions.",
+        "type": "kill",
+        "targetMonsterId": "chaser_basic",
+        "requiredCount": 100,
+        "rewards": {
+            "xp": 500,
+            "coins": 50,
+            "itemId": "potion_small"
+        }
+    }]
+}
