@@ -1,7 +1,7 @@
 import Phaser from 'phaser'
 import type { ItemInstance, EquipmentConfig, ItemAffixRoll } from '@/types'
 import Tooltip from '@/ui/Tooltip'
-import { getItem, rarityToColor, getAffix } from '@/systems/ItemDB'
+import { getItem, rarityToColor, getAffix, getItemValue } from '@/systems/ItemDB'
 
 export default class InventoryUI {
   private scene: Phaser.Scene
@@ -115,8 +115,15 @@ export default class InventoryUI {
       const rect = this.scene.add.rectangle(cx, cy, r.width, r.height, 0x1a1a1a, 1).setStrokeStyle(2, 0x333333, 1).setDepth(5)
       const hoverFill = this.scene.add.rectangle(cx, cy, r.width, r.height, 0xffffff, 0.05).setVisible(false).setDepth(4)
       rect.setInteractive({ useHandCursor: true }); this.scene.input.setDraggable(rect)
+      rect.on('pointerdown', (p: Phaser.Input.Pointer) => {
+        try { console.log('[Inventory] equip slot mousedown', { slotId, pointer: { x: p.worldX, y: p.worldY } }) } catch {}
+      })
       rect.on('pointerover', (p: Phaser.Input.Pointer) => { console.log('[Inventory] slot over', slotId); rect.setStrokeStyle(2, 0x66ccff, 1); hoverFill.setVisible(true); if (this.hoverOutline) { this.hoverOutline.setSize(r.width, r.height); this.hoverOutline.setPosition(rect.x, rect.y).setVisible(true) } this.showEquipTooltip(slotId, p) })
       rect.on('pointerout', () => { console.log('[Inventory] slot out', slotId); rect.setStrokeStyle(2, 0x333333, 1); hoverFill.setVisible(false); if (this.hoverOutline) this.hoverOutline.setVisible(false); this.tooltip.hide() })
+      // Allow dragging from the empty slot area to unequip
+      rect.on('dragstart', () => this.onEquipDragStart(slotId))
+      rect.on('drag', (pointer: Phaser.Input.Pointer) => this.onDragMove(pointer.x, pointer.y))
+      rect.on('dragend', (pointer: Phaser.Input.Pointer) => this.onDragEnd(pointer.x, pointer.y, { cols, rows, gridW: w, gridH: h }))
       const txt = this.scene.add.text(r.x - 26, r.y - 24, label, { fontFamily: 'monospace', color: '#bbb', fontSize: '10px' }).setDepth(3)
       let icon: Phaser.GameObjects.Image | undefined
       const currentItemId = (this.equipment as any)[slotId] as string | undefined
@@ -124,6 +131,9 @@ export default class InventoryUI {
       if (displayKey) {
         icon = this.scene.add.image(cx, cy, displayKey).setDisplaySize(28, 28).setInteractive({ useHandCursor: true }).setDepth(6)
         this.scene.input.setDraggable(icon)
+        icon.on('pointerdown', (p: Phaser.Input.Pointer) => {
+          try { console.log('[Inventory] equip icon mousedown', { slotId, pointer: { x: p.worldX, y: p.worldY } }) } catch {}
+        })
         icon.on('pointerover', (p: Phaser.Input.Pointer) => { rect.emit('pointerover', p) })
         icon.on('pointerout', () => { rect.emit('pointerout') })
         icon.on('dragstart', () => this.onEquipDragStart(slotId))
@@ -161,7 +171,7 @@ export default class InventoryUI {
     try { (this.scene as any).hotbar?.setAllowSkillClick?.(false) } catch {}
 
     const esc = this.scene.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.ESC)
-    esc?.once('down', () => this.close())
+    esc?.once('down', () => { this.close(); try { (this.scene as any).__suppressEscUntil = (this.scene as any).time?.now + 150 } catch {} })
   }
 
   private showTooltip(idx: number, p: Phaser.Input.Pointer): void {
@@ -188,6 +198,51 @@ export default class InventoryUI {
 
   private onDragEnd(x: number, y: number, grid?: { cols: number; rows: number; gridW: number; gridH: number }): void {
     if (this.dragIcon) this.dragIcon.destroy(); this.dragIcon = undefined
+    // Unequip flow: if dragging from an equipment slot, allow dropping into a specific grid cell
+    if (this.dragFromEquipId && this.dragItemId) {
+      const localX = x - (this.container?.x ?? 0)
+      const localY = y - (this.container?.y ?? 0)
+      let placed = false
+      if (grid) {
+        // Prefer the exact same index math the grid uses
+        const viaPointerIndex = this.pointerToIndex(localX, localY)
+        // Keep the old rounding approach for logging/backup
+        const colApprox = Math.round((localX + grid.gridW / 2 - 30) / 55)
+        const rowApprox = Math.round((localY + grid.gridH / 2 - 30) / 55)
+        const approxIdx = (colApprox >= 0 && colApprox < grid.cols && rowApprox >= 0 && rowApprox < grid.rows)
+          ? rowApprox * grid.cols + colApprox
+          : null
+        try { console.log('[Inventory] equip→grid drop', { local: { x: localX, y: localY }, pointerIdx: viaPointerIndex, approx: { col: colApprox, row: rowApprox, idx: approxIdx } }) } catch {}
+        const targetIdx = viaPointerIndex ?? approxIdx
+        if (typeof targetIdx === 'number') {
+          const occupied = !!this.items[targetIdx]
+          try { console.log('[Inventory] equip→grid target check', { targetIdx, occupied, existing: this.items[targetIdx] }) } catch {}
+          if (!occupied) {
+            const aff = (this.equipment as any)[this.dragFromEquipId + 'Affixes'] as ItemAffixRoll[] | undefined
+            const inst = { id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, itemId: this.dragItemId, qty: 1, affixes: aff } as ItemInstance
+            ;(this.items as any)[targetIdx] = inst
+            placed = true
+            try { console.log('[Inventory] equip→grid placed', { slotId: this.dragFromEquipId, itemId: this.dragItemId, targetIdx }) } catch {}
+          } else {
+            try { console.warn('[Inventory] equip→grid blocked: target occupied', { targetIdx }) } catch {}
+          }
+        }
+      }
+      if (!placed) {
+        const aff = (this.equipment as any)[this.dragFromEquipId + 'Affixes'] as ItemAffixRoll[] | undefined
+        try { console.log('[Inventory] equip→grid fallback: add to first free', { slotId: this.dragFromEquipId, itemId: this.dragItemId }) } catch {}
+        this.addItemToGrid(this.dragItemId, aff)
+      }
+      // Clear equipment slot and persist via callback
+      ;(this.equipment as any)[this.dragFromEquipId] = undefined
+      ;(this.equipment as any)[this.dragFromEquipId + 'Affixes'] = undefined
+      this.onUnequip?.(this.dragFromEquipId)
+      this.onChange?.(this.items.filter(Boolean) as ItemInstance[])
+      this.open([...this.items.filter(Boolean)], this.onChange, this.onDrop, this.equipment, this.onEquip, this.onUnequip)
+      this.dragFromEquipId = null
+      this.dragItemId = null
+      return
+    }
     if (this.dragIndex !== null) {
       const it = this.items[this.dragIndex]
       if (it) {
@@ -215,16 +270,21 @@ export default class InventoryUI {
             this.onEquip?.(slot.type, it.itemId, newAff, slot.id)
             // Swap: put previous equipped back into the same grid index we took from
             if (this.dragIndex !== null) {
-              if (prevId && prevId !== it.itemId) {
+              if (prevId) {
                 const inst = { id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, itemId: prevId, qty: 1, affixes: prevAff } as ItemInstance
                 ;(this.items as any)[this.dragIndex] = inst
+                try { console.log('[Inventory] swap back to grid', { toIndex: this.dragIndex, prevId, prevAff }) } catch {}
               } else {
                 // If no previous item, clear the grid cell
                 this.items[this.dragIndex] = undefined as any
+                try { console.log('[Inventory] equip from grid into empty slot → cleared dragged cell', { idx: this.dragIndex }) } catch {}
               }
             } else {
               // No known drag index; fallback to push previous into grid if exists
-              if (prevId && prevId !== it.itemId) this.addItemToGrid(prevId, prevAff)
+              if (prevId) {
+                this.addItemToGrid(prevId, prevAff)
+                try { console.log('[Inventory] swap back with unknown source index → pushed previous into first free', { prevId }) } catch {}
+              }
             }
             // persist
             this.onChange?.(this.items.filter(Boolean) as ItemInstance[])
@@ -329,7 +389,12 @@ export default class InventoryUI {
     if (!itemId) return
     this.dragFromEquipId = slotId
     this.dragItemId = itemId
-    this.dragIcon = this.scene.add.text(this.scene.input.activePointer.worldX, this.scene.input.activePointer.worldY, itemId, { fontFamily: 'monospace', color: '#ffd166', fontSize: '12px' }).setDepth(3002)
+    const p = this.scene.input.activePointer
+    try { console.log('[Inventory] equip dragstart', { slotId, itemId, pointer: { x: p.worldX, y: p.worldY } }) } catch {}
+    this.dragIcon = this.scene
+      .add.text(p.worldX, p.worldY, itemId, { fontFamily: 'monospace', color: '#ffd166', fontSize: '12px' })
+      .setDepth(3002)
+      .setScrollFactor(0)
   }
 
   private showEquipTooltip(slotId: string, p: Phaser.Input.Pointer): void {
@@ -360,6 +425,10 @@ export default class InventoryUI {
     const paramEntries = Object.entries(p)
       .filter(([k, v]) => typeof v === 'number' || typeof v === 'string')
       .map(([k, v]) => `- ${k}: ${v}`)
+    // Value line
+    const value = getItemValue(cfg.id)
+    if (value > 0) lines.push(`
+Value: ${value} coins`)
     if (paramEntries.length) {
       lines.push(paramEntries.join('\n'))
     }
@@ -443,17 +512,36 @@ export default class InventoryUI {
         s.node.setStrokeStyle(2, over ? (valid ? 0x66ff99 : 0xff6666) : 0x333333, 1)
       })
     }
-    if (this.dragIndex !== null && this.dragIcon) this.onDragMove(p.x, p.y)
+    if (this.dragIcon) this.onDragMove(p.x, p.y)
   }
 
   private onPointerDown(p: Phaser.Input.Pointer): void {
     if (!this.container || !this.gridMeta) return
-    const idx = this.pointerToIndex(p.x - this.container.x, p.y - this.container.y)
-    if (idx !== null) this.onDragStart(idx)
+    const localX = p.x - this.container.x
+    const localY = p.y - this.container.y
+    const idx = this.pointerToIndex(localX, localY)
+    if (idx !== null) {
+      try { console.log('[Inventory] grid dragstart', { idx, pointer: { x: p.x, y: p.y } }) } catch {}
+      this.onDragStart(idx)
+      return
+    }
+    // Not over grid: if over an equipped slot, start equip drag
+    const sOver = this.allEquipSlots.find(s => this.pointInRectPadded(s.rect, localX, localY, 4))
+    if (sOver) {
+      const eqId = (this.equipment as any)[sOver.id] as string | undefined
+      if (eqId) {
+        try { console.log('[Inventory] equip dragstart (pointerdown)', { slotId: sOver.id, itemId: eqId, pointer: { x: p.x, y: p.y } }) } catch {}
+        this.onEquipDragStart(sOver.id)
+        return
+      }
+    }
   }
 
   private onPointerUp(p: Phaser.Input.Pointer): void {
-    if (this.dragIndex !== null) this.onDragEnd(p.x, p.y, this.gridMeta && { cols: this.gridMeta.cols, rows: this.gridMeta.rows, gridW: this.gridMeta.w, gridH: this.gridMeta.h })
+    if (this.dragIndex !== null || (this.dragFromEquipId && this.dragItemId)) {
+      try { console.log('[Inventory] pointerup → drop', { fromGrid: this.dragIndex !== null, fromEquip: !!(this.dragFromEquipId && this.dragItemId) }) } catch {}
+      this.onDragEnd(p.x, p.y, this.gridMeta && { cols: this.gridMeta.cols, rows: this.gridMeta.rows, gridW: this.gridMeta.w, gridH: this.gridMeta.h })
+    }
   }
 
   private pointerToIndex(localX: number, localY: number): number | null {
@@ -516,12 +604,14 @@ export default class InventoryUI {
     // remove one instance from inventory
     const idx = this.items.findIndex(i => i && i.itemId === itemId)
     if (idx >= 0) {
-      if (prevId && prevId !== itemId) {
-        // swap into same slot
+      if (prevId) {
+        // swap into same slot regardless of base id equality
         const inst = { id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, itemId: prevId, qty: 1, affixes: prevAff } as ItemInstance
         ;(this.items as any)[idx] = inst
+        try { console.log('[Inventory] autoEquip swap back to grid', { toIndex: idx, prevId, prevAff }) } catch {}
       } else {
         this.items[idx] = undefined as any
+        try { console.log('[Inventory] autoEquip into empty slot → cleared dragged cell', { idx }) } catch {}
       }
     } else if (prevId && prevId !== itemId) {
       this.addItemToGrid(prevId, prevAff)

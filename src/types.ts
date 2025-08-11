@@ -208,6 +208,7 @@ export type ItemConfig = {
   subtype?: string
   stackable?: boolean
   maxStack?: number
+  value?: number
   params?: Record<string, number | string | boolean>
 }
 

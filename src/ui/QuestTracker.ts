@@ -55,6 +55,8 @@ export default class QuestTrackerUI {
       container.add(t)
     }
   }
+
+  setVisible(v: boolean): void { this.container?.setVisible(v) }
 }
 
 

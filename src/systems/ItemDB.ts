@@ -1,5 +1,5 @@
 import itemsRaw from '@/data/items.json'
-import type { ItemConfig, ItemRarity, AffixConfig, ItemSetConfig } from '@/types'
+import type { ItemConfig, ItemRarity, AffixConfig, ItemSetConfig, ItemInstance } from '@/types'
 import affixesRaw from '@/data/affixes.json'
 import setsRaw from '@/data/item_sets.json'
 
@@ -12,6 +12,29 @@ const setDb: Record<string, ItemSetConfig> = {}
 
 export function getItem(id: string): ItemConfig | undefined { return db[id] }
 export function listItems(): ItemConfig[] { return Object.values(db) }
+export function getItemValue(id: string): number { const it = db[id]; const base = Number((it as any)?.value ?? 0); return Number.isFinite(base) ? Math.max(0, Math.floor(base)) : 0 }
+
+export function computeSellValue(inst: ItemInstance): number {
+  const cfg = db[inst.itemId]
+  if (!cfg) return 0
+  const base = getItemValue(cfg.id)
+  const rarityMult: Record<ItemRarity, number> = { common: 1, rare: 2, epic: 4, legendary: 8 }
+  let value = base * (rarityMult[cfg.rarity] || 1)
+  const rolls = inst.affixes || []
+  for (const r of rolls) {
+    const a = affixDb[r.affixId]
+    if (!a) continue
+    const v = typeof r.value === 'number' ? r.value : 0
+    if (a.category === 'legendary') {
+      value += 50
+    } else if (a.valueType === 'percent') {
+      value += Math.round(v * 2)
+    } else {
+      value += Math.round(v * 1)
+    }
+  }
+  return Math.max(0, Math.floor(value))
+}
 export function isStackable(id: string): boolean { const c = db[id]; return !!c && !!c.stackable }
 export function maxStack(id: string): number {
   const c = db[id]

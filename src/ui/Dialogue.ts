@@ -32,7 +32,7 @@ export default class DialogueBox {
     this.container = this.scene.add.container(x, y, [bg, titleText, linesText, ...opts]).setScrollFactor(0).setDepth(2500)
 
     this.keydown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { this.close(); return }
+      if (e.key === 'Escape') { this.close(); try { (this.scene as any).__suppressEscUntil = (this.scene as any).time?.now + 150 } catch {} return }
       const n = parseInt(e.key, 10)
       if (Number.isFinite(n) && n >= 1 && n <= options.length) {
         this.select(options[n - 1])

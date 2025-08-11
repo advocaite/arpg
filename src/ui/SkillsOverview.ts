@@ -115,10 +115,10 @@ export default class SkillsOverviewUI {
     // Accept/Cancel at bottom center
     const acceptBtn = this.scene.add.text(-40, h / 2 - 28, 'ACCEPT', { fontFamily: 'monospace', color: '#ffd166', fontSize: '12px', backgroundColor: '#222' }).setPadding(6, 4, 6, 4).setOrigin(0.5).setScrollFactor(0).setInteractive({ useHandCursor: true })
     const cancelBtn = this.scene.add.text(40, h / 2 - 28, 'CANCEL', { fontFamily: 'monospace', color: '#ff7777', fontSize: '12px', backgroundColor: '#222' }).setPadding(6, 4, 6, 4).setOrigin(0.5).setScrollFactor(0).setInteractive({ useHandCursor: true })
-    acceptBtn.on('pointerup', () => { console.log('[OverviewUI] Commit', JSON.stringify(current)); onUpdate(current); this.onCloseCb?.(); this.close() })
-    cancelBtn.on('pointerup', () => { this.onCloseCb?.(); this.close() })
+    acceptBtn.on('pointerup', () => { console.log('[OverviewUI] Commit', JSON.stringify(current)); onUpdate(current); this.onCloseCb?.(); try { (this.scene as any).__suppressEscUntil = (this.scene as any).time?.now + 150 } catch {} this.close() })
+    cancelBtn.on('pointerup', () => { this.onCloseCb?.(); try { (this.scene as any).__suppressEscUntil = (this.scene as any).time?.now + 150 } catch {} this.close() })
     const esc = this.scene.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.ESC)
-    esc?.once('down', () => { this.onCloseCb?.(); this.close() })
+    esc?.once('down', () => { this.onCloseCb?.(); try { (this.scene as any).__suppressEscUntil = (this.scene as any).time?.now + 150 } catch {} this.close() })
 
     this.container = this.scene.add.container(x, y, [...nodes, acceptBtn, cancelBtn]).setScrollFactor(0).setDepth(3500)
 
