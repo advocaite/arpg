@@ -21,7 +21,14 @@ export default function projectileZigzag(ctx: PowerContext, args: PowerInvokeArg
 
   const p = (ctx.scene.physics as any).add.sprite(ox, oy, 'projectile')
   p.setDepth(1)
-  try { p.setDataEnabled(); p.setData('faction', 'player'); p.setData('element', element); p.setData('source', 'ranged') } catch {}
+  // Tag projectile faction based on caster (player vs enemy)
+  try {
+    p.setDataEnabled()
+    const casterFaction = (ctx.caster as any)?.getData?.('faction') || 'player'
+    p.setData('faction', casterFaction)
+    p.setData('element', element)
+    p.setData('source', 'ranged')
+  } catch {}
   if (ctx.projectiles) ctx.projectiles.add(p)
 
   const startTs = ctx.scene.time.now

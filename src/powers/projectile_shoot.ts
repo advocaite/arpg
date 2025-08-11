@@ -27,14 +27,23 @@ export default function projectileShoot(ctx: PowerContext, args: PowerInvokeArgs
   }
   const p = (ctx.scene.physics as any).add.sprite(ox, oy, 'projectile')
   p.setDepth(1)
-  try { p.setDataEnabled(); p.setData('faction', 'player'); p.setData('element', elementVal); p.setData('source', 'ranged') } catch {}
+  // Tag projectile faction based on caster (player vs enemy)
+  try {
+    p.setDataEnabled()
+    const casterFaction = (ctx.caster as any)?.getData?.('faction') || 'player'
+    p.setData('faction', casterFaction)
+    p.setData('element', elementVal)
+    p.setData('source', 'ranged')
+  } catch {}
   // Phaser sometimes needs physics body ready before setting velocity; defer one tick
   ctx.scene.time.delayedCall(0, () => { if ((p as any).active && (p as any).body) p.setVelocity(nx * speed, ny * speed) })
   ctx.projectiles?.add(p)
   const decayMs = Number(args.params['decayMs'] ?? 2000)
   ctx.scene.time.delayedCall(decayMs, () => p.destroy())
   try {
-    (ctx.scene.physics as any).add.overlap(p, ctx.enemies, (_p: any, obj: any) => {
+    // Only register enemy overlap when the projectile is from the player
+    const isPlayerProj = ((p as any).getData?.('faction') || 'player') === 'player'
+    if (isPlayerProj) (ctx.scene.physics as any).add.overlap(p, ctx.enemies, (_p: any, obj: any) => {
       const enemy = obj as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody
       const hp = Number(enemy.getData('hp') || 1)
       const newHp = Math.max(0, hp - dmgFinal)

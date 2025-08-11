@@ -24,7 +24,14 @@ export default function projectileRing(ctx: PowerContext, args: PowerInvokeArgs)
     const nx = Math.cos(angle), ny = Math.sin(angle)
     const p = (ctx.scene.physics as any).add.sprite(ox, oy, 'projectile')
     p.setDepth(1)
-    try { p.setDataEnabled(); p.setData('faction', 'player'); p.setData('element', element); p.setData('source', 'ranged') } catch {}
+    // Tag projectile faction based on caster (player vs enemy)
+    try {
+      p.setDataEnabled();
+      const casterFaction = (ctx.caster as any)?.getData?.('faction') || 'player'
+      p.setData('faction', casterFaction)
+      p.setData('element', element)
+      p.setData('source', 'ranged')
+    } catch {}
     if (!orbit) {
       // Fire outward
       ctx.scene.time.delayedCall(0, () => { if ((p as any).active && (p as any).body) p.setVelocity(nx * speed, ny * speed) })
@@ -45,8 +52,13 @@ export default function projectileRing(ctx: PowerContext, args: PowerInvokeArgs)
     }
     if (projGroup) projGroup.add(p)
     if (!orbit) ctx.scene.time.delayedCall(decayMs, () => p.destroy())
-    // Register overlap to apply damage and detect kills
+    // Register overlap to apply damage and detect kills (only for player projectiles)
     try {
+      const isPlayerProj = ((p as any).getData?.('faction') || 'player') === 'player'
+      if (!isPlayerProj) {
+        // Enemy ring projectiles should not damage enemies; world handles player damage
+        continue
+      }
       (ctx.scene.physics as any).add.overlap(p, ctx.enemies, (_p: any, obj: any) => {
         const enemy = obj as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody
         const hp = Number(enemy.getData('hp') || 1)

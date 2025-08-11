@@ -12,6 +12,14 @@ export default function projectileFollow(ctx: PowerContext, args: PowerInvokeArg
   const ox = ctx.caster.x, oy = ctx.caster.y
   const p = (ctx.scene.physics as any).add.sprite(ox, oy, 'projectile')
   p.setDepth(1)
+  // Tag projectile faction based on caster (player vs enemy)
+  try {
+    p.setDataEnabled()
+    const casterFaction = (ctx.caster as any)?.getData?.('faction') || 'player'
+    p.setData('faction', casterFaction)
+    p.setData('element', element)
+    p.setData('source', 'ranged')
+  } catch {}
   try { p.setDataEnabled(); p.setData('faction', 'player'); p.setData('element', element); p.setData('source', 'ranged') } catch {}
   if (ctx.projectiles) ctx.projectiles.add(p)
 

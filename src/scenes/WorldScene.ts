@@ -458,6 +458,16 @@ export default class WorldScene extends Phaser.Scene {
       this.add.text(p.x, p.y - 30, p.name, { fontFamily: 'monospace', color: '#aaf' }).setOrigin(0.5)
       this.portals.push({ sprite: s, cfg: p })
       this.physics.add.overlap(this.player, s, () => this.teleport(p))
+      // Portal visual effect (oval vortex) – choose theme by destinationId
+      try {
+        const fx = await import('@/systems/Effects')
+        let colors: { outer: number; inner: number } = { outer: 0x66e3ff, inner: 0x2a86ff }
+        const dest = (p.destinationId || '').toLowerCase()
+        if (dest.includes('arena')) colors = { outer: 0xff6a33, inner: 0xffa133 } // fiery
+        else if (dest.includes('dungeon')) colors = { outer: 0x9a66ff, inner: 0x5f2aff } // arcane
+        else if (dest.includes('world')) colors = { outer: 0xffb347, inner: 0xff7f27 } // orange
+        ;(fx as any).executeEffectByRef?.('fx.portalVortex', { scene: this, caster: s as any }, { x: p.x, y: p.y, width: 96, height: 140, colorOuter: colors.outer, colorInner: colors.inner })
+      } catch {}
     }
 
     // NPCs
@@ -1194,6 +1204,8 @@ export default class WorldScene extends Phaser.Scene {
     const e = this.physics.add.sprite(x, y, 'player').setTint(cfg?.tint ?? 0xff5555)
     e.body.setCircle(cfg?.bodyRadius ?? 12)
     e.setDataEnabled()
+    // Tag enemies with faction to distinguish projectile ownership
+    try { e.setData('faction', 'enemy') } catch {}
     if (cfg) {
       e.setData('configId', cfg.id)
       e.setData('brainId', cfg.brainId || cfg.behavior)

@@ -52,6 +52,25 @@ export default class StatsPanel {
   }
 
   setData(data: StatsPanelData): void {
+    // Defensive: if panel elements were destroyed due to scene switch, recreate lazily
+    const needsRebuild =
+      !this.container ||
+      // @ts-ignore - check invalidated/destroyed objects
+      !(this.container as any).scene ||
+      !this.bg ||
+      // @ts-ignore
+      !(this.bg as any).scene ||
+      !this.text ||
+      // @ts-ignore
+      !(this.text as any).scene
+    if (needsRebuild) {
+      const w = this.scene.scale.width
+      this.container = this.scene.add.container(w - 10, 10).setDepth(2000).setScrollFactor(0)
+      this.container.setVisible(this.visible)
+      this.bg = this.scene.add.rectangle(0, 0, 280, 180, 0x000000, 0.7).setOrigin(1, 0).setStrokeStyle(1, 0xffffff, 0.2)
+      this.text = this.scene.add.text(0, 0, '', { fontFamily: 'monospace', color: '#fff' }).setOrigin(1, 0)
+      this.container.add([this.bg, this.text])
+    }
     const lines: string[] = []
     const title = `${data.name || 'Unnamed'}${data.className ? ` (${data.className})` : ''}${data.level ? `  Lv.${data.level}` : ''}`
     lines.push(title)
@@ -91,8 +110,10 @@ export default class StatsPanel {
     this.text.setText(lines.join('\n'))
     const padding = 12
     const bounds = this.text.getBounds()
-    this.bg.setSize(Math.max(220, bounds.width + padding * 2), Math.max(120, bounds.height + padding * 2))
-    this.text.setPosition(-padding, padding)
+    try {
+      this.bg?.setSize(Math.max(220, bounds.width + padding * 2), Math.max(120, bounds.height + padding * 2))
+      this.text?.setPosition(-padding, padding)
+    } catch {}
   }
 
   toggle(show?: boolean): void {

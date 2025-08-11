@@ -23,12 +23,21 @@ export default function projectileCone(ctx: PowerContext, args: PowerInvokeArgs)
     const nx = Math.cos(ang), ny = Math.sin(ang)
     const p = (ctx.scene.physics as any).add.sprite(ox, oy, 'projectile')
     p.setDepth(1)
-    try { p.setDataEnabled(); p.setData('faction', 'player'); p.setData('element', String((args.skill as any)?.element || 'physical')); p.setData('source', 'ranged') } catch {}
+    // Tag projectile faction based on caster (player vs enemy)
+    try {
+      p.setDataEnabled()
+      const casterFaction = (ctx.caster as any)?.getData?.('faction') || 'player'
+      p.setData('faction', casterFaction)
+      p.setData('element', String((args.skill as any)?.element || 'physical'))
+      p.setData('source', 'ranged')
+    } catch {}
     ctx.projectiles.add(p)
     p.setVelocity(nx * speed, ny * speed)
     ctx.scene.time.delayedCall(decayMs, () => p.destroy())
-    // Add overlap for kill accounting similar to projectile_shoot
+    // Add overlap for kill accounting similar to projectile_shoot (only for player projectiles)
     try {
+      const isPlayerProj = ((p as any).getData?.('faction') || 'player') === 'player'
+      if (!isPlayerProj) continue
       (ctx.scene.physics as any).add.overlap(p, ctx.enemies, (_p: any, obj: any) => {
         const enemy = obj as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody
         const hp = Number(enemy.getData('hp') || 1)
