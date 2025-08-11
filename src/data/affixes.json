@@ -14,6 +14,11 @@
         { "id": "sec_crit", "category": "secondary", "label": "+Crit Chance", "statKey": "critChance", "valueType": "percent", "min": 1, "max": 10, "weight": 4 },
         { "id": "sec_area", "category": "secondary", "label": "+Area Damage", "statKey": "areaDamagePct", "valueType": "percent", "min": 2, "max": 20, "weight": 3 },
         { "id": "sec_mf", "category": "secondary", "label": "+Magic Find", "statKey": "magicFindPct", "valueType": "percent", "min": 2, "max": 20, "weight": 5 },
+        { "id": "sec_freeze", "category": "secondary", "label": "% Freeze on Hit", "statKey": "freezeChance", "valueType": "percent", "min": 1, "max": 10, "weight": 4 },
+        { "id": "sec_stun", "category": "secondary", "label": "% Stun on Hit", "statKey": "stunChance", "valueType": "percent", "min": 1, "max": 12, "weight": 5 },
+        { "id": "sec_confuse", "category": "secondary", "label": "% Confuse on Hit", "statKey": "confuseChance", "valueType": "percent", "min": 1, "max": 8, "weight": 3 },
+        { "id": "sec_bleed_chance", "category": "secondary", "label": "% Bleed Chance", "statKey": "bleedChance", "valueType": "percent", "min": 2, "max": 20, "weight": 6 },
+        { "id": "sec_bleed_dmg", "category": "secondary", "label": "+Bleed Damage (flat)", "statKey": "bleedDamageFlat", "valueType": "flat", "min": 2, "max": 12, "weight": 6 },
 
         { "id": "leg_thunderproc", "category": "legendary", "label": "Thunderstruck", "powerRef": "lightning.chain", "procChance": 0.08, "powerParams": { "chains": 3, "damage": 20 } },
         { "id": "leg_bloodnova", "category": "legendary", "label": "Blood Nova", "powerRef": "aoe.pulse", "procChance": 0.05, "powerParams": { "radius": 80, "damage": 25, "color": 16733525 } }

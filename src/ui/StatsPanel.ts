@@ -67,7 +67,22 @@ export default class StatsPanel {
     const moveSpd = sec.moveSpeedMult ? `${(sec.moveSpeedMult * 100).toFixed(0)}%` : '100%'
     lines.push(`Armor: ${sec.armor ?? 0}  Resist: ${sec.resistAll ?? 0}  Move: ${moveSpd}`)
     lines.push(`Dmg Mult: ${dm}  Crit: ${crit}  CritDmg: ${critDmg}  AtkSpd: ${atkSpd}`)
-    lines.push(`Magic Find: ${Math.round((sec.magicFindPct ?? 0) * 100)}%  HPS: ${sec.healthPerSecond ?? 0}  MPS: ${sec.manaPerSecond ?? 0}  HoH: ${sec.healthOnHit ?? 0}`)
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
+    const mps = (sec as any).manaPerSecond ?? 0
+    lines.push(`Magic Find: ${Math.round((sec.magicFindPct ?? 0) * 100)}%  HPS: ${sec.healthPerSecond ?? 0}  MPS: ${mps}  HoH: ${sec.healthOnHit ?? 0}`)
+    // Crowd control and bleed (if available)
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
+    const cc = sec as any
+    const freezePct = cc.freezeChance ? Math.round(cc.freezeChance * 100) : 0
+    const stunPct = cc.stunChance ? Math.round(cc.stunChance * 100) : 0
+    const confusePct = cc.confuseChance ? Math.round(cc.confuseChance * 100) : 0
+    const bleedPct = cc.bleedChance ? Math.round(cc.bleedChance * 100) : 0
+    const bleedDmg = cc.bleedDamageFlat ?? 0
+    if (freezePct || stunPct || confusePct || bleedPct || bleedDmg) {
+      lines.push(`CC: Freeze ${freezePct}%  Stun ${stunPct}%  Confuse ${confusePct}%  Bleed ${bleedPct}% (+${bleedDmg})`)
+    }
     lines.push(`GlobeMag: ${sec.globeMagnetRadius ?? 0}  GoldMag: ${sec.goldMagnetRadius ?? 0}`)
     lines.push(`Dodge: ${Math.round((sec.dodgeChance ?? 0) * 100)}%  Block: ${Math.round((sec.blockChance ?? 0) * 100)}%  BlockAmt: ${sec.blockAmount ?? 0}`)
     lines.push(`CC Red: ${Math.round((sec.crowdControlReductionPct ?? 0) * 100)}%  Elite DR: ${Math.round((sec.eliteDamageReductionPct ?? 0) * 100)}%`)

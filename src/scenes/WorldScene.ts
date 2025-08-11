@@ -69,6 +69,12 @@ export default class WorldScene extends Phaser.Scene {
   private magicFindBonusPct = 0
   private thornsDamage = 0
   private thornsRadius = 180
+  // Crowd-control and bleed chances
+  private freezeChance = 0
+  private stunChance = 0
+  private confuseChance = 0
+  private bleedChance = 0
+  private bleedDamageFlat = 0
   private regenCarryover = 0
   private level = 1
   private exp = 0
@@ -413,6 +419,7 @@ export default class WorldScene extends Phaser.Scene {
     this.playerHp = Math.max(1, Math.min(this.maxHp, this.playerHp))
     this.hpText?.setText(`HP: ${this.playerHp}`)
     this.orbs?.update(this.playerHp, this.maxHp, this.mana, this.maxMana)
+    this.updateStatsPanel()
     // Instantiate Shop UI
     try { this.shopUI = new ShopUI(this) } catch {}
 
@@ -950,6 +957,11 @@ export default class WorldScene extends Phaser.Scene {
     this.critChanceBonus = 0
     this.armorBonusFlat = 0
     this.healthPerSecondBonus = 0
+    this.freezeChance = 0
+    this.stunChance = 0
+    this.confuseChance = 0
+    this.bleedChance = 0
+    this.bleedDamageFlat = 0
     this.manaPerSecond = 0
     this.damageBonusMult = 1
     // Scan all equip slots and aggregate params + affixes
@@ -1071,6 +1083,11 @@ export default class WorldScene extends Phaser.Scene {
         if (key === 'critChance') { this.critChanceBonus += (cfg.valueType === 'percent' ? (val / 100) : val); continue }
         if (key === 'areaDamagePct') { this.areaDamagePct += (cfg.valueType === 'percent' ? val / 100 : val); continue }
         if (key === 'magicFindPct') { this.magicFindBonusPct += (cfg.valueType === 'percent' ? val / 100 : val); continue }
+        if (key === 'freezeChance') { this.freezeChance += (cfg.valueType === 'percent' ? val / 100 : val); continue }
+        if (key === 'stunChance') { this.stunChance += (cfg.valueType === 'percent' ? val / 100 : val); continue }
+        if (key === 'confuseChance') { this.confuseChance += (cfg.valueType === 'percent' ? val / 100 : val); continue }
+        if (key === 'bleedChance') { this.bleedChance += (cfg.valueType === 'percent' ? val / 100 : val); continue }
+        if (key === 'bleedDamageFlat') { this.bleedDamageFlat += val; continue }
         if (key === 'armor') { this.armorBonusFlat += val; continue }
         if (key === 'damageMultiplier' || key === 'attackDamageMult' || key === 'attackDamagePct') { this.damageBonusMult *= (cfg.valueType === 'percent' ? (1 + val / 100) : (1 + val)); continue }
         // Primary stats or generic stat additive
@@ -1611,6 +1628,17 @@ export default class WorldScene extends Phaser.Scene {
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
         manaPerSecond: this.manaPerSecond,
+        // cc and bleed for display
+        // @ts-ignore
+        freezeChance: this.freezeChance,
+        // @ts-ignore
+        stunChance: this.stunChance,
+        // @ts-ignore
+        confuseChance: this.confuseChance,
+        // @ts-ignore
+        bleedChance: this.bleedChance,
+        // @ts-ignore
+        bleedDamageFlat: this.bleedDamageFlat,
       }
     })
   }

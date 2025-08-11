@@ -48,6 +48,34 @@ export default function meleeSwing(ctx: PowerContext, args: PowerInvokeArgs): vo
         }
       }
     } catch {}
+    // Crowd-control and bleed rolls
+    try {
+      const anyScene: any = ctx.scene
+      const roll = (p: number) => Math.random() < Math.max(0, Math.min(1, p))
+      if (roll(anyScene.freezeChance || 0)) {
+        (target.body as any).enable = false
+        executeEffectByRef('fx.flash', { scene: ctx.scene, caster: target as any }, { tint: 0x66ccff, durationMs: 250 })
+        ctx.scene.time.delayedCall(600, () => { try { (target.body as any).enable = true } catch {} })
+      } else if (roll(anyScene.stunChance || 0)) {
+        (target.body as any).enable = false
+        executeEffectByRef('fx.flash', { scene: ctx.scene, caster: target as any }, { tint: 0xffff66, durationMs: 200 })
+        ctx.scene.time.delayedCall(500, () => { try { (target.body as any).enable = true } catch {} })
+      }
+      if (roll(anyScene.confuseChance || 0)) {
+        // Apply brief erratic movement
+        const vx = (Math.random() * 2 - 1) * 80, vy = (Math.random() * 2 - 1) * 80
+        try { (target as any).setVelocity?.(vx, vy) } catch {}
+        executeEffectByRef('fx.flash', { scene: ctx.scene, caster: target as any }, { tint: 0xff66ff, durationMs: 150 })
+        ctx.scene.time.delayedCall(600, () => { try { (target as any).setVelocity?.(0, 0) } catch {} })
+      }
+      if (roll(anyScene.bleedChance || 0)) {
+        const bleed = Math.max(0, Math.floor(Number(anyScene.bleedDamageFlat || 0)))
+        if (bleed > 0) {
+          import('@/systems/Status').then(mod => { (mod as any).applyBleed?.(ctx.scene, target, { damagePerTick: bleed, ticks: 3, intervalMs: 450 }) })
+        }
+      }
+    } catch {}
+
     if (newHp <= 0) {
       try {
         const anyScene: any = ctx.scene

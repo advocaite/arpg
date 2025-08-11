@@ -24,6 +24,15 @@ export default function aoePulse(ctx: PowerContext, args: PowerInvokeArgs): void
         const hp = Number(e.getData('hp') || 1)
         const newHp = Math.max(0, hp - damage)
         e.setData('hp', newHp)
+        // CC/Bleed hooks
+        try {
+          const anyScene: any = ctx.scene
+          const roll = (p: number) => Math.random() < Math.max(0, Math.min(1, p))
+          if (roll(anyScene.freezeChance || 0)) { (e.body as any).enable = false; executeEffectByRef('fx.flash', { scene: ctx.scene, caster: e as any }, { tint: 0x66ccff, durationMs: 250 }); ctx.scene.time.delayedCall(600, () => { try { (e.body as any).enable = true } catch {} }) }
+          else if (roll(anyScene.stunChance || 0)) { (e.body as any).enable = false; executeEffectByRef('fx.flash', { scene: ctx.scene, caster: e as any }, { tint: 0xffff66, durationMs: 200 }); ctx.scene.time.delayedCall(500, () => { try { (e.body as any).enable = true } catch {} }) }
+          if (roll(anyScene.confuseChance || 0)) { const vx = (Math.random() * 2 - 1) * 80, vy = (Math.random() * 2 - 1) * 80; try { (e as any).setVelocity?.(vx, vy) } catch {}; executeEffectByRef('fx.flash', { scene: ctx.scene, caster: e as any }, { tint: 0xff66ff, durationMs: 150 }); ctx.scene.time.delayedCall(600, () => { try { (e as any).setVelocity?.(0, 0) } catch {} }) }
+          if (roll(anyScene.bleedChance || 0)) { const bleed = Math.max(0, Math.floor(Number(anyScene.bleedDamageFlat || 0))); if (bleed > 0) { import('@/systems/Status').then(mod => { (mod as any).applyBleed?.(ctx.scene, e, { damagePerTick: bleed, ticks: 3, intervalMs: 450 }) }) } }
+        } catch {}
         // Item procs on hit (AoE)
         try {
           const sceneAny: any = ctx.scene

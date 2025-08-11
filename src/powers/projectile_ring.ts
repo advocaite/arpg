@@ -58,6 +58,15 @@ export default function projectileRing(ctx: PowerContext, args: PowerInvokeArgs)
         const newHp = Math.max(0, hp - dmg)
         enemy.setData('hp', newHp)
         try { executeEffectByRef('fx.damageNumber', { scene: ctx.scene, caster: ctx.caster }, { x: enemy.x, y: enemy.y - 10, value: `${dmg}`, element, crit: isCrit }) } catch {}
+        // CC/Bleed hooks
+        try {
+          const anyScene: any = ctx.scene
+          const roll = (p: number) => Math.random() < Math.max(0, Math.min(1, p))
+          if (roll(anyScene.freezeChance || 0)) { (enemy.body as any).enable = false; executeEffectByRef('fx.flash', { scene: ctx.scene, caster: enemy as any }, { tint: 0x66ccff, durationMs: 250 }); ctx.scene.time.delayedCall(600, () => { try { (enemy.body as any).enable = true } catch {} }) }
+          else if (roll(anyScene.stunChance || 0)) { (enemy.body as any).enable = false; executeEffectByRef('fx.flash', { scene: ctx.scene, caster: enemy as any }, { tint: 0xffff66, durationMs: 200 }); ctx.scene.time.delayedCall(500, () => { try { (enemy.body as any).enable = true } catch {} }) }
+          if (roll(anyScene.confuseChance || 0)) { const vx = (Math.random() * 2 - 1) * 80, vy = (Math.random() * 2 - 1) * 80; try { (enemy as any).setVelocity?.(vx, vy) } catch {}; executeEffectByRef('fx.flash', { scene: ctx.scene, caster: enemy as any }, { tint: 0xff66ff, durationMs: 150 }); ctx.scene.time.delayedCall(600, () => { try { (enemy as any).setVelocity?.(0, 0) } catch {} }) }
+          if (roll(anyScene.bleedChance || 0)) { const bleed = Math.max(0, Math.floor(Number(anyScene.bleedDamageFlat || 0))); if (bleed > 0) { import('@/systems/Status').then(mod => { (mod as any).applyBleed?.(ctx.scene, enemy, { damagePerTick: bleed, ticks: 3, intervalMs: 450 }) }) } }
+        } catch {}
         // Heal on hit (orbit rune behavior)
         if (healOnHit > 0) {
           try {
