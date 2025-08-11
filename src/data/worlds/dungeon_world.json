@@ -3,6 +3,7 @@
     "name": "Dungeon (World)",
     "width": 1600,
     "height": 1200,
+    "music": { "key": "bgm_dungeon", "urls": ["assets/music/bgm_dungeon.ogg", "assets/music/bgm_dungeon.mp3"], "volume": 0.5 },
     "portals": [
         { "id": "portal_town", "name": "Return to Town", "destinationScene": "World", "destinationId": "town", "x": 120, "y": 140 }
     ],

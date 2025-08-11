@@ -42,6 +42,14 @@ export default class PreloadScene extends Phaser.Scene {
     try {
       this.load.json('npc_conversations', 'src/data/npc_conversations.json')
     } catch {}
+
+    // Generic BGM preloads (optional). Worlds can also supply custom URLs which we'll load on demand.
+    try {
+      this.load.audio('bgm_town', [
+        'assets/music/bgm_town.ogg',
+        'assets/music/bgm_town.mp3'
+      ])
+    } catch {}
   }
 
   create(): void { this.scene.start('MainMenu') }

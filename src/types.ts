@@ -84,6 +84,12 @@ export type WorldConfig = {
   height: number
   tilemapUrl?: string
   tilesetKey?: string
+  // Optional background music per world
+  music?: {
+    key: string
+    urls?: string[]
+    volume?: number
+  }
   portals: PortalConfig[]
   npcs: NpcConfig[]
   obstacles?: { x: number; y: number }[]

@@ -115,6 +115,7 @@ export default class WorldScene extends Phaser.Scene {
   private equipment: EquipmentConfig = {}
   private weaponFlatDamage = 0
   private bonusMaxHp = 0
+  private bgm?: Phaser.Sound.BaseSound
 
   constructor() { super({ key: 'World' }) }
 
@@ -165,6 +166,7 @@ export default class WorldScene extends Phaser.Scene {
 
     // Persist on shutdown
     this.events.once('shutdown', () => this.persistCharacter())
+    this.events.once('shutdown', () => { try { this.bgm?.stop(); this.bgm?.destroy(); this.bgm = undefined } catch {} })
 
     // Load world config (import for known ids; fetch fallback for others)
     if (this.worldId === 'town' || this.worldId === 'town_default') {
@@ -322,6 +324,33 @@ export default class WorldScene extends Phaser.Scene {
     this.invUI = new InventoryUI(this)
     // Apply equipment effects at start
     this.applyEquipmentEffects()
+
+    // Background music per world (looped)
+    try {
+      const m = this.worldConfig.music
+      if (m && m.key) {
+        // If custom URLs provided and not yet in cache, load them at runtime
+        const hasKey = this.sound.get(m.key) || this.cache.audio.exists(m.key)
+        if (!hasKey && m.urls && m.urls.length) {
+          await new Promise<void>((resolve) => {
+            this.load.audio(m.key, m.urls as any)
+            this.load.once(Phaser.Loader.Events.COMPLETE, () => resolve())
+            this.load.start()
+          })
+        }
+        this.bgm?.stop(); this.bgm?.destroy();
+        this.bgm = this.sound.add(m.key, { loop: true, volume: typeof m.volume === 'number' ? m.volume : 0.6 })
+        this.bgm.play()
+      } else {
+        // Fallback to a generic per-world key if available
+        const fallbackKey = this.worldId === 'town' || this.worldId === 'town_default' ? 'bgm_town' : undefined
+        if (fallbackKey && (this.sound.get(fallbackKey) || this.cache.audio.exists(fallbackKey))) {
+          this.bgm?.stop(); this.bgm?.destroy();
+          this.bgm = this.sound.add(fallbackKey, { loop: true, volume: 0.6 })
+          this.bgm.play()
+        }
+      }
+    } catch {}
 
     // Portals
     for (const p of this.worldConfig.portals) {

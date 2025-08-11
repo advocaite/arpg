@@ -3,6 +3,7 @@
     "name": "Town",
     "width": 1600,
     "height": 1200,
+    "music": { "key": "bgm_town" },
     "portals": [
         { "id": "portal_arena_world", "name": "Arena (World)", "destinationScene": "World", "destinationId": "arena_world", "x": 800, "y": 400 },
         { "id": "portal_dungeon_world", "name": "Dungeon (World)", "destinationScene": "World", "destinationId": "dungeon_world", "x": 700, "y": 400 },
