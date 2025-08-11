@@ -38,6 +38,7 @@ export default class OrbsUI {
     this.hpFill = hpFill
     this.leftMask = this.scene.add.graphics({ x: 0, y: 0 })
     this.leftMask.setVisible(false)
+    this.leftMask.setScrollFactor(0)
     hpFill.setMask(new Phaser.Display.Masks.GeometryMask(this.scene, this.leftMask))
     this.hpText = this.scene.add.text(leftX, baseY, '', { fontFamily: 'monospace', color: '#ffd6d6', fontSize: '11px' }).setOrigin(0.5).setScrollFactor(0)
     this.hpCenter = { x: leftX, y: baseY, r: orbRadius - 2 }
@@ -46,6 +47,7 @@ export default class OrbsUI {
     // Circular clip so sheen/glow never spill outside the orb boundary
     this.leftCircleClip = this.scene.add.graphics({ x: 0, y: 0 })
     this.leftCircleClip.setVisible(false)
+    this.leftCircleClip.setScrollFactor(0)
     this.leftCircleClip.fillStyle(0xffffff, 1); this.leftCircleClip.fillCircle(leftX, baseY, orbRadius - 1)
     const leftCircleMask = new Phaser.Display.Masks.GeometryMask(this.scene, this.leftCircleClip)
     this.hpSheen.setMask(leftCircleMask); this.hpGlow.setMask(leftCircleMask)
@@ -56,6 +58,7 @@ export default class OrbsUI {
     this.manaFill = manaFill
     this.rightMask = this.scene.add.graphics({ x: 0, y: 0 })
     this.rightMask.setVisible(false)
+    this.rightMask.setScrollFactor(0)
     manaFill.setMask(new Phaser.Display.Masks.GeometryMask(this.scene, this.rightMask))
     this.manaText = this.scene.add.text(rightX, baseY, '', { fontFamily: 'monospace', color: '#d6e8ff', fontSize: '11px' }).setOrigin(0.5).setScrollFactor(0)
     this.manaCenter = { x: rightX, y: baseY, r: orbRadius - 2 }
@@ -63,6 +66,7 @@ export default class OrbsUI {
     this.manaRim.setScrollFactor(0); this.manaSheen.setScrollFactor(0); this.manaGlow.setScrollFactor(0)
     this.rightCircleClip = this.scene.add.graphics({ x: 0, y: 0 })
     this.rightCircleClip.setVisible(false)
+    this.rightCircleClip.setScrollFactor(0)
     this.rightCircleClip.fillStyle(0xffffff, 1); this.rightCircleClip.fillCircle(rightX, baseY, orbRadius - 1)
     const rightCircleMask = new Phaser.Display.Masks.GeometryMask(this.scene, this.rightCircleClip)
     this.manaSheen.setMask(rightCircleMask); this.manaGlow.setMask(rightCircleMask)
@@ -121,8 +125,9 @@ export default class OrbsUI {
     this.manaText?.setPosition(rightX, baseY)
     this.hpCenter.x = leftX; this.hpCenter.y = baseY
     this.manaCenter.x = rightX; this.manaCenter.y = baseY
-    this.hpFill?.setPosition(0, 0)
-    this.manaFill?.setPosition(0, 0)
+    // Force masks/clips to update with new center positions
+    if (this.leftMask) { (this.leftMask as any).__frac = typeof (this.leftMask as any).__frac === 'number' ? (this.leftMask as any).__frac : 1; this.leftMask.clear() }
+    if (this.rightMask) { (this.rightMask as any).__frac = typeof (this.rightMask as any).__frac === 'number' ? (this.rightMask as any).__frac : 1; this.rightMask.clear() }
     // Update circular clips
     if (this.leftCircleClip) { this.leftCircleClip.clear(); this.leftCircleClip.fillStyle(0xffffff, 1); this.leftCircleClip.fillCircle(leftX, baseY, this.hpCenter.r + 1) }
     if (this.rightCircleClip) { this.rightCircleClip.clear(); this.rightCircleClip.fillStyle(0xffffff, 1); this.rightCircleClip.fillCircle(rightX, baseY, this.manaCenter.r + 1) }

@@ -21,7 +21,7 @@ export default class DialogueBox {
     const bg = this.scene.add.rectangle(0, 0, w, h, 0x000000, 0.9).setStrokeStyle(1, 0xffffff, 0.2)
     const titleText = this.scene.add.text(0, -h / 2 + 16, title, { fontFamily: 'monospace', color: '#ffd166' }).setOrigin(0.5)
 
-    const linesText = this.scene.add.text(-w / 2 + 16, -h / 2 + 40, lines.join('\n'), { fontFamily: 'monospace', color: '#ffffff' })
+    const linesText = this.scene.add.text(-w / 2 + 16, -h / 2 + 40, lines.join('\n'), { fontFamily: 'monospace', color: '#ffffff', wordWrap: { width: w - 32 } as any })
     const opts: Phaser.GameObjects.Text[] = []
     options.forEach((opt, idx) => {
       const t = this.scene.add.text(-w / 2 + 16, -h / 2 + 120 + idx * 22, `${idx + 1}. ${opt.label}`, { fontFamily: 'monospace', color: '#aaf' })

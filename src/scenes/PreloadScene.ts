@@ -29,6 +29,19 @@ export default class PreloadScene extends Phaser.Scene {
     const iw = this.add.graphics({ x: 0, y: 0 }); iw.fillStyle(0x888888, 1); iw.fillRect(0, 0, 24, 24); iw.lineStyle(3, 0xb0b0b0, 1); iw.strokeTriangle(4, 18, 12, 6, 20, 18); iw.generateTexture('icon_weapon', 24, 24); iw.destroy()
     const ia = this.add.graphics({ x: 0, y: 0 }); ia.fillStyle(0x3355aa, 1); ia.fillRect(0, 0, 24, 24); ia.lineStyle(2, 0x88aaff, 1); ia.strokeRoundedRect(2, 3, 20, 18, 6); ia.generateTexture('icon_armor', 24, 24); ia.destroy()
     const isk = this.add.graphics({ x: 0, y: 0 }); isk.fillStyle(0x8844cc, 1); isk.fillRect(0, 0, 24, 24); isk.lineStyle(2, 0xcc99ff, 1); isk.strokeRect(0, 0, 24, 24); isk.generateTexture('icon_skill', 24, 24); isk.destroy()
+
+    // VO/SFX preload (place files under /assets/sounds)
+    try {
+      this.load.audio('vo_gossip_shopkeeper', [
+        'assets/sounds/vo_gossip_shopkeeper.ogg',
+        'assets/sounds/vo_gossip_shopkeeper.mp3'
+      ])
+    } catch {}
+
+    // Conversations JSON
+    try {
+      this.load.json('npc_conversations', 'src/data/npc_conversations.json')
+    } catch {}
   }
 
   create(): void { this.scene.start('MainMenu') }

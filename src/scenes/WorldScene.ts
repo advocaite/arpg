@@ -24,6 +24,7 @@ import { applyDamageReduction } from '@/systems/Stats'
 import { expRequiredForLevel } from '@/systems/Experience'
 import { executeEffectByRef } from '@/systems/Effects'
 import HoldAction from '@/ui/HoldAction'
+import { loadConversationData, getConversationBundle, getNpcConversation, attachGossip } from '@/systems/NPCConversations'
 
 export default class WorldScene extends Phaser.Scene {
   private character?: CharacterProfile
@@ -333,6 +334,7 @@ export default class WorldScene extends Phaser.Scene {
     }
 
     // NPCs
+    await loadConversationData(this)
     for (const n of this.worldConfig.npcs) {
       const s = this.physics.add.sprite(n.x, n.y, 'player').setTint(0xffcc66)
       s.body.setCircle(12)
@@ -340,6 +342,12 @@ export default class WorldScene extends Phaser.Scene {
       this.add.text(n.x, n.y - 28, n.name, { fontFamily: 'monospace', color: '#ffd166' }).setOrigin(0.5)
       s.setData('role', n.role)
       this.npcs.push(s)
+      // Attach gossip driver (default config; can be overridden per NPC via data)
+      try {
+        const npcId = `npc_${n.name}`
+        const cfg = getNpcConversation(npcId)
+        if (cfg) attachGossip(this, s as any, cfg)
+      } catch {}
     }
 
     // Colliders & Camera
@@ -885,9 +893,21 @@ export default class WorldScene extends Phaser.Scene {
     }
     console.log('[World] tryTalk nearest?', !!nearest.s, 'dist', nearest.d)
     if (!nearest.s || nearest.d > 120) { console.log('[World] no NPC in range to talk; dist', nearest.d); return }
-    const role = (nearest.s.getData('role') as string) || ''
-    console.log('[World] nearest role', role)
-    if (role === 'shopkeeper') { console.log('[World] opening shop'); this.openShop() }
+    const npcName = 'Villager'
+    try {
+      import('@/systems/NPCConversations').then((mod) => {
+        const cfg = (mod as any).getNpcConversation?.(`npc_Shopkeeper`) || { bundleId: 'bundle_shopkeeper' }
+        ;(mod as any).openConversation?.(this, cfg.bundleId)
+      })
+      this.uiModalOpen = true
+      this.hotbar?.setAllowSkillClick(false)
+      const esc = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.ESC)
+      esc?.once('down', () => { this.uiModalOpen = false; this.hotbar?.setAllowSkillClick(true) })
+    } catch (e) {
+      console.warn('[World] conversation failed, fallback to shop if available')
+      const role = (nearest.s.getData('role') as string) || ''
+      if (role === 'shopkeeper') { console.log('[World] opening shop'); this.openShop() }
+    }
   }
 
   private openShop(): void {

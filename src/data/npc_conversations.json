@@ -1,0 +1,32 @@
+{
+    "bundles": [{
+        "id": "bundle_shopkeeper",
+        "nodes": [{
+                "id": "welcome",
+                "type": "normal",
+                "title": "Shopkeeper",
+                "lines": [
+                    { "id": "w1", "text": "Welcome! Care to browse my wares?" }
+                ],
+                "options": [
+                    { "id": "opt_shop", "label": "Open Shop", "openShop": true },
+                    { "id": "opt_news", "label": "Any news?", "nextConversationId": "gossip_1" },
+                    { "id": "opt_bye", "label": "Goodbye" }
+                ]
+            },
+            {
+                "id": "gossip_1",
+                "type": "gossip",
+                "lines": [
+                    { "id": "g1", "text": "Monsters have been restless beyond the east gate.", "soundKey": "vo_gossip_shopkeeper" }
+                ],
+                "options": [
+                    { "id": "opt_back", "label": "Back", "nextConversationId": "welcome" }
+                ]
+            }
+        ]
+    }],
+    "npcs": [
+        { "npcId": "npc_Shopkeeper", "bundleId": "bundle_shopkeeper", "gossip": { "radius": 140, "cooldownMs": 10000 } }
+    ]
+}
