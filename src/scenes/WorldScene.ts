@@ -641,15 +641,23 @@ export default class WorldScene extends Phaser.Scene {
       const have = countItemInInv(this.inventory, potId)
       if (have > 0) {
         const base = getItem(potId)
-        const heal = Math.max(0, Number(base?.params?.['heal'] ?? 20))
+        const heal = Math.max(0, Number(base?.params?.['heal'] ?? 0))
+        const manaGain = Math.max(0, Number(base?.params?.['mana'] ?? 0))
         const potCd = Math.max(0, Number(base?.params?.['cooldownMs'] || 0))
         const nowTs = this.time.now
         if (potCd > 0 && nowTs < this.potionCooldownUntil) {
           // still cooling down; ignore
           return
         }
-        this.playerHp = Math.min(this.maxHp, this.playerHp + heal)
-        this.hpText.setText(`HP: ${this.playerHp}`)
+        // Apply effects
+        if (heal > 0) {
+          this.playerHp = Math.min(this.maxHp, this.playerHp + heal)
+          this.hpText.setText(`HP: ${this.playerHp}`)
+        }
+        if (manaGain > 0) {
+          this.mana = Math.min(this.maxMana, this.mana + manaGain)
+          this.manaText?.setText(`Mana: ${this.mana}`)
+        }
         this.orbs?.update(this.playerHp, this.maxHp, this.mana, this.maxMana)
         // consume one
         const charId = this.character?.id ?? 0
@@ -936,9 +944,15 @@ export default class WorldScene extends Phaser.Scene {
       }
     }, this.equipment, (slot, itemId, affixes, slotKey) => {
       try { console.log('[World] onEquip', { slot, slotKey, itemId, affixes }) } catch {}
-      if (slotKey) (this.equipment as any)[slotKey + 'Affixes'] = affixes
-      if (slot === 'weapon') this.equipment.mainHandId = itemId
-      if (slot === 'armor') this.equipment.chestId = itemId
+      // Persist affixes and the equipped item id into the exact slot that was targeted
+      if (slotKey) {
+        (this.equipment as any)[slotKey] = itemId
+        ;(this.equipment as any)[slotKey + 'Affixes'] = affixes
+      } else {
+        // Fallback for legacy single-slot UI
+        if (slot === 'weapon') this.equipment.mainHandId = itemId
+        if (slot === 'armor') this.equipment.chestId = itemId
+      }
       saveEquipment(charId, this.equipment)
       this.applyEquipmentEffects()
     }, (slotKey) => {

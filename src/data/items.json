@@ -1,9 +1,64 @@
 {
     "items": [
-        { "id": "potion_small", "name": "Small Potion", "type": "potion", "rarity": "common", "stackable": true, "maxStack": 20, "params": { "heal": 20, "cooldownMs": 30000 } },
-        { "id": "sword_rusty", "name": "Rusty Sword", "type": "weapon", "subtype": "mainHand", "rarity": "common", "params": { "damage": 5 } },
-        { "id": "wand_cracked", "name": "Cracked Wand", "type": "weapon", "subtype": "mainHand", "rarity": "common", "params": { "magicDamage": 5 } },
-        { "id": "armor_cloth", "name": "Cloth Armor", "type": "armor", "subtype": "chest", "rarity": "common", "params": { "hp": 10 } },
-        { "id": "sword_ancient", "name": "Ancient Sword", "type": "weapon", "subtype": "mainHand", "rarity": "legendary", "params": { "damage": 18 }, "lore": "A blade that hums with latent power." }
+        { "id": "potion_small", "name": "Small Potion", "type": "potion", "rarity": "common", "stackable": true, "maxStack": 20, "value": 5, "params": { "heal": 20, "cooldownMs": 30000 } },
+        { "id": "potion_medium", "name": "Medium Potion", "type": "potion", "rarity": "rare", "stackable": true, "maxStack": 20, "value": 12, "params": { "heal": 50, "cooldownMs": 30000 } },
+        { "id": "potion_large", "name": "Large Potion", "type": "potion", "rarity": "epic", "stackable": true, "maxStack": 20, "value": 24, "params": { "heal": 120, "cooldownMs": 30000 } },
+        { "id": "potion_mana_small", "name": "Small Mana Potion", "type": "potion", "rarity": "common", "stackable": true, "maxStack": 20, "value": 6, "params": { "mana": 20, "cooldownMs": 30000 } },
+        { "id": "potion_mana_medium", "name": "Medium Mana Potion", "type": "potion", "rarity": "rare", "stackable": true, "maxStack": 20, "value": 14, "params": { "mana": 50, "cooldownMs": 30000 } },
+        { "id": "potion_mana_large", "name": "Large Mana Potion", "type": "potion", "rarity": "epic", "stackable": true, "maxStack": 20, "value": 28, "params": { "mana": 120, "cooldownMs": 30000 } },
+        { "id": "potion_rejuv_small", "name": "Small Rejuvenation", "type": "potion", "rarity": "rare", "stackable": true, "maxStack": 20, "value": 18, "params": { "heal": 35, "mana": 35, "cooldownMs": 45000 } },
+
+        { "id": "sword_rusty", "name": "Rusty Sword", "type": "weapon", "subtype": "mainHand", "rarity": "common", "value": 8, "params": { "damage": 5 } },
+        { "id": "sword_iron", "name": "Iron Sword", "type": "weapon", "subtype": "mainHand", "rarity": "common", "value": 16, "params": { "damage": 9 } },
+        { "id": "sword_steel", "name": "Steel Sword", "type": "weapon", "subtype": "mainHand", "rarity": "rare", "value": 36, "params": { "damage": 14 } },
+        { "id": "sword_mythril", "name": "Mythril Sword", "type": "weapon", "subtype": "mainHand", "rarity": "epic", "value": 75, "params": { "damage": 22 } },
+        { "id": "sword_ancient", "name": "Ancient Sword", "type": "weapon", "subtype": "mainHand", "rarity": "legendary", "value": 150, "params": { "damage": 30 }, "lore": "A blade that hums with latent power." },
+
+        { "id": "dagger_shiv", "name": "Crudely Forged Shiv", "type": "weapon", "subtype": "mainHand", "rarity": "common", "value": 10, "params": { "damage": 6 } },
+        { "id": "dagger_steel", "name": "Steel Dagger", "type": "weapon", "subtype": "mainHand", "rarity": "rare", "value": 30, "params": { "damage": 12 } },
+        { "id": "dagger_assassin", "name": "Assassin's Knife", "type": "weapon", "subtype": "mainHand", "rarity": "epic", "value": 80, "params": { "damage": 20 } },
+
+        { "id": "axe_woodcutter", "name": "Woodcutter's Axe", "type": "weapon", "subtype": "mainHand", "rarity": "common", "value": 14, "params": { "damage": 8 } },
+        { "id": "axe_battle", "name": "Battle Axe", "type": "weapon", "subtype": "mainHand", "rarity": "rare", "value": 42, "params": { "damage": 16 } },
+        { "id": "axe_crescent", "name": "Crescent Axe", "type": "weapon", "subtype": "mainHand", "rarity": "epic", "value": 90, "params": { "damage": 24 } },
+
+        { "id": "mace_club", "name": "Wooden Club", "type": "weapon", "subtype": "mainHand", "rarity": "common", "value": 8, "params": { "damage": 6 } },
+        { "id": "mace_war", "name": "War Mace", "type": "weapon", "subtype": "mainHand", "rarity": "rare", "value": 40, "params": { "damage": 15 } },
+        { "id": "mace_sunstorm", "name": "Sunstorm Mace", "type": "weapon", "subtype": "mainHand", "rarity": "epic", "value": 95, "params": { "damage": 25 } },
+
+        { "id": "flail_spiked", "name": "Spiked Flail", "type": "weapon", "subtype": "mainHand", "rarity": "rare", "value": 48, "params": { "damage": 18 } },
+        { "id": "flail_meteor", "name": "Meteor Flail", "type": "weapon", "subtype": "mainHand", "rarity": "epic", "value": 110, "params": { "damage": 28 } },
+
+        { "id": "scythe_reaper", "name": "Reaper's Scythe", "type": "weapon", "subtype": "mainHand", "rarity": "epic", "value": 120, "params": { "damage": 26 } },
+
+        { "id": "staff_oak", "name": "Oak Staff", "type": "weapon", "subtype": "mainHand", "rarity": "common", "value": 18, "params": { "magicDamage": 8 } },
+        { "id": "staff_arcane", "name": "Arcane Staff", "type": "weapon", "subtype": "mainHand", "rarity": "rare", "value": 50, "params": { "magicDamage": 14 } },
+        { "id": "staff_storm", "name": "Stormcaller Staff", "type": "weapon", "subtype": "mainHand", "rarity": "epic", "value": 120, "params": { "magicDamage": 24 } },
+        { "id": "wand_cracked", "name": "Cracked Wand", "type": "weapon", "subtype": "mainHand", "rarity": "common", "value": 7, "params": { "magicDamage": 5 } },
+        { "id": "wand_apprentice", "name": "Apprentice Wand", "type": "weapon", "subtype": "mainHand", "rarity": "common", "value": 16, "params": { "magicDamage": 9 } },
+        { "id": "wand_arcanite", "name": "Arcanite Wand", "type": "weapon", "subtype": "mainHand", "rarity": "rare", "value": 44, "params": { "magicDamage": 15 } },
+
+        { "id": "shield_wood", "name": "Wooden Shield", "type": "weapon", "subtype": "offHand", "rarity": "common", "value": 10, "params": { "hp": 10 } },
+        { "id": "shield_kite", "name": "Kite Shield", "type": "weapon", "subtype": "offHand", "rarity": "rare", "value": 40, "params": { "hp": 25 } },
+        { "id": "shield_tower", "name": "Tower Shield", "type": "weapon", "subtype": "offHand", "rarity": "epic", "value": 90, "params": { "hp": 45 } },
+        { "id": "tome_novice", "name": "Novice Spell Tome", "type": "weapon", "subtype": "offHand", "rarity": "rare", "value": 42, "params": { "hp": 10 } },
+        { "id": "orb_glimmering", "name": "Glimmering Orb", "type": "weapon", "subtype": "offHand", "rarity": "epic", "value": 88, "params": { "hp": 20 } },
+
+        { "id": "helm_leather", "name": "Leather Cap", "type": "armor", "subtype": "helm", "rarity": "common", "value": 10, "params": { "hp": 8 } },
+        { "id": "helm_chain", "name": "Chain Coif", "type": "armor", "subtype": "helm", "rarity": "rare", "value": 28, "params": { "hp": 16 } },
+        { "id": "shoulders_leather", "name": "Leather Shoulders", "type": "armor", "subtype": "shoulders", "rarity": "common", "value": 10, "params": { "hp": 6 } },
+        { "id": "shoulders_plated", "name": "Plated Shoulders", "type": "armor", "subtype": "shoulders", "rarity": "rare", "value": 24, "params": { "hp": 14 } },
+        { "id": "armor_cloth", "name": "Cloth Armor", "type": "armor", "subtype": "chest", "rarity": "common", "value": 12, "params": { "hp": 10 } },
+        { "id": "armor_chain", "name": "Chainmail", "type": "armor", "subtype": "chest", "rarity": "rare", "value": 36, "params": { "hp": 22 } },
+        { "id": "gloves_cloth", "name": "Cloth Gloves", "type": "armor", "subtype": "gloves", "rarity": "common", "value": 8, "params": { "hp": 6 } },
+        { "id": "gloves_plated", "name": "Plated Gauntlets", "type": "armor", "subtype": "gloves", "rarity": "rare", "value": 26, "params": { "hp": 14 } },
+        { "id": "pants_leather", "name": "Leather Pants", "type": "armor", "subtype": "pants", "rarity": "common", "value": 10, "params": { "hp": 8 } },
+        { "id": "pants_plated", "name": "Plated Greaves", "type": "armor", "subtype": "pants", "rarity": "rare", "value": 28, "params": { "hp": 16 } },
+        { "id": "boots_leather", "name": "Leather Boots", "type": "armor", "subtype": "boots", "rarity": "common", "value": 10, "params": { "hp": 6 } },
+        { "id": "boots_sabaton", "name": "Steel Sabatons", "type": "armor", "subtype": "boots", "rarity": "rare", "value": 24, "params": { "hp": 14 } },
+        { "id": "belt_rope", "name": "Rope Belt", "type": "armor", "subtype": "belt", "rarity": "common", "value": 6, "params": { "hp": 4 } },
+        { "id": "belt_war", "name": "War Belt", "type": "armor", "subtype": "belt", "rarity": "rare", "value": 22, "params": { "hp": 12 } },
+        { "id": "amulet_copper", "name": "Copper Amulet", "type": "armor", "subtype": "amulet", "rarity": "common", "value": 12, "params": { "hp": 6 } },
+        { "id": "amulet_sunstone", "name": "Sunstone Amulet", "type": "armor", "subtype": "amulet", "rarity": "epic", "value": 90, "params": { "hp": 22 } }
     ]
 }
