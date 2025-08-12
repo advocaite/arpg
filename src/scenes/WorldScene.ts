@@ -124,6 +124,7 @@ export default class WorldScene extends Phaser.Scene {
   private shopUI?: ShopUI
   private npcs: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody[] = []
   private npcIcons: Map<Phaser.Types.Physics.Arcade.SpriteWithDynamicBody, Phaser.GameObjects.Text> = new Map()
+  private npcVisibilityState: Set<string> = new Set()
   private updateAllNpcQuestIcons = (): void => {
     try {
       import('@/systems/NPCConversations').then(mod => {
@@ -133,14 +134,29 @@ export default class WorldScene extends Phaser.Scene {
             // Only show quest icons for whitelisted roles
             const allowedRoles = new Set(['shopkeeper', 'questgiver'])
             if (!allowedRoles.has(role)) { const old = this.npcIcons.get(s); if (old) old.destroy(); this.npcIcons.delete(s); continue }
+            // Suppress icons while assisting
+            if (s.getData('assistMode')) { const old = this.npcIcons.get(s); if (old) old.destroy(); this.npcIcons.delete(s); continue }
             const name = (s.getData('name') as string) || (s.name as string)
             if (!name) { const old = this.npcIcons.get(s); if (old) old.destroy(); this.npcIcons.delete(s); continue }
             const npcId = `npc_${name}`
-            const conv = (mod as any).getNpcConversation?.(npcId)
-            if (!conv) { const old = this.npcIcons.get(s); if (old) old.destroy(); this.npcIcons.delete(s); continue }
-            const summary = (mod as any).summarizeBundleQuests?.(conv.bundleId) || { offers: [], turnins: [] }
-            const hasTurnIn = (summary.turnins || []).some((id: string) => (qm as any).getQuestState?.(id)?.completed)
-            const hasOffer = (summary.offers || []).some((id: string) => !(qm as any).getQuestState?.(id))
+            const chosen = (mod as any).selectNpcBundle?.(this, s as any)
+            const bundleId = chosen?.bundleId || (mod as any).getNpcConversation?.(npcId)?.bundleId
+            // If the NPC itself is hidden, suppress icon
+            if (s.visible === false || (s.getData('hiddenByQuest') === true)) { const old = this.npcIcons.get(s); if (old) old.destroy(); this.npcIcons.delete(s); continue }
+            if (!bundleId) { const old = this.npcIcons.get(s); if (old) old.destroy(); this.npcIcons.delete(s); continue }
+            const summary = (mod as any).summarizeBundleQuests?.(bundleId) || { offers: [], turnins: [] }
+            const get = (qid: string) => (qm as any).getQuestState?.(qid)
+            const isCompletedEver = (qid: string) => {
+              try { return !!((qm as any).hasCompletedQuest?.(qid)) } catch { return false }
+            }
+            const hasTurnIn = (summary.turnins || []).some((id: string) => { const st = get(id); return !!st && st.completed === true })
+            const hasOffer = (summary.offers || []).some((id: string) => {
+              const st = get(id)
+              if (st) return false
+              // Suppress '!' if quest was completed before (handles non-repeatable properly)
+              if (isCompletedEver(id)) return false
+              return true
+            })
             const iconChar = hasTurnIn ? '?' : (hasOffer ? '!' : '')
             const old = this.npcIcons.get(s)
             if (old) old.destroy()
@@ -603,15 +619,62 @@ export default class WorldScene extends Phaser.Scene {
       }
       ;(this as any).refreshQuestUI()
     } catch {}
+    // Restore despawn/spawn persistence snapshot
+    try {
+      const raw = localStorage.getItem('npc.state')
+      if (raw) {
+        const arr: Array<{ id: string; removed?: boolean }> = JSON.parse(raw)
+        this.npcVisibilityState = new Set(arr.filter(e => e && e.id && e.removed).map(e => e.id))
+      }
+    } catch {}
+
     for (const n of this.worldConfig.npcs) {
+      // Skip spawning if marked removed in persistence
+      if (n.id && this.npcVisibilityState.has(n.id)) continue
       const s = this.physics.add.sprite(n.x, n.y, 'player').setTint(0xffcc66)
       s.body.setCircle(12)
       ;(s as any).isInvulnerable = true
       try { if ((this.lights as any)?.active) (s as any).setPipeline?.('Light2D') } catch {}
-      try { s.setName?.(n.name); s.setData('name', n.name) } catch {}
-      this.add.text(n.x, n.y - 28, n.name, { fontFamily: 'monospace', color: '#ffd166' }).setOrigin(0.5)
+      try { s.setName?.(n.name); s.setData('name', n.name); s.setData('id', n.id) } catch {}
+      const nameText = this.add.text(n.x, n.y - 28, n.name, { fontFamily: 'monospace', color: '#ffd166' }).setOrigin(0.5)
+      try { nameText.setName?.(`__npc_name_${n.id}`) } catch {}
       s.setData('role', n.role)
+      // Persist optional NPC brain and params on sprite data for runtime tick
+      if ((n as any).brainId) s.setData('brainId', (n as any).brainId)
+      if ((n as any).params) { try { Object.entries((n as any).params).forEach(([k,v]) => s.setData(k, v as any)) } catch {} }
+      if (Array.isArray((n as any).conversationBundles)) s.setData('conversationBundles', (n as any).conversationBundles)
+      // Restore assistMode from persistence
+      try {
+        const key = `npc.assist.${String(n.name)}`
+        const val = localStorage.getItem(key)
+        if (val === '1') s.setData('assistMode', true)
+      } catch {}
       this.npcs.push(s)
+      // Conditional visibility by quest state via optional params
+      try {
+        const requireCompleted: string[] = Array.isArray((n as any)?.params?.requireCompleted) ? (n as any).params.requireCompleted : []
+        const requireActive: string[] = Array.isArray((n as any)?.params?.requireActive) ? (n as any).params.requireActive : []
+        const requireNotActive: string[] = Array.isArray((n as any)?.params?.requireNotActive) ? (n as any).params.requireNotActive : []
+        const charId = String(this.character?.id ?? localStorage.getItem('quests.activeCharId') ?? '0')
+        const completed: Array<{ id: string }> = JSON.parse(localStorage.getItem(`quests.completed.${charId}`) || '[]') || []
+        const active: Array<{ id: string }> = JSON.parse(localStorage.getItem(`quests.state.${charId}`) || '[]') || []
+        const hasCompleted = (id: string) => completed.some(e => e.id === id)
+        const isActive = (id: string) => active.some(q => q.id === id)
+        const visible = (
+          (requireCompleted.length === 0 || requireCompleted.every(hasCompleted)) &&
+          (requireActive.length === 0 || requireActive.every(isActive)) &&
+          (requireNotActive.length === 0 || requireNotActive.every(id => !isActive(id)))
+        )
+        const nameLabel = this.children.getByName?.(`__npc_name_${n.id}`) as Phaser.GameObjects.Text | undefined
+        if (!visible) {
+          try { s.setVisible(false); (s.body as any).enable = false; (s as any).setData('hiddenByQuest', true) } catch {}
+          try { nameLabel?.setVisible(false) } catch {}
+        } else {
+          try { s.setVisible(true); (s.body as any).enable = true; (s as any).setData('hiddenByQuest', false) } catch {}
+          try { nameLabel?.setVisible(true) } catch {}
+        }
+      } catch {}
+
       // Attach gossip driver (default config; can be overridden per NPC via data)
       try {
         const npcId = `npc_${n.name}`
@@ -907,7 +970,14 @@ export default class WorldScene extends Phaser.Scene {
     }
 
     // Interact
-    if (!this.uiModalOpen && Phaser.Input.Keyboard.JustDown(this.eKey)) { console.log('[World] E pressed; attempting talk'); this.tryTalk(); return }
+    if (Phaser.Input.Keyboard.JustDown(this.eKey)) {
+      if (this.uiModalOpen) {
+        // Clear stuck modal and allow re-open
+        try { this.uiModalOpen = false; this.hotbar?.setAllowSkillClick(true) } catch {}
+      } else {
+        console.log('[World] E pressed; attempting talk'); this.tryTalk(); return
+      }
+    }
 
     // Regen (health and mana)
     if (!this.isDead) {
@@ -929,6 +999,31 @@ export default class WorldScene extends Phaser.Scene {
         this.orbs?.update(this.playerHp, this.maxHp, this.mana, this.maxMana)
       }
     }
+
+    // NPC brains tick
+    try {
+      const anyScene: any = this
+      if (!anyScene.__npcBrainTick) {
+        import('@/systems/BrainRegistry').then(mod => { anyScene.__npcBrainTick = (mod as any).executeNpcBrainTickByRef })
+      }
+      const tickNpc: any = anyScene.__npcBrainTick
+      if (typeof tickNpc === 'function') {
+        for (const npc of this.npcs) {
+          // While in assist mode, suppress gossip and interaction icon
+          const assisting = !!npc.getData('assistMode')
+          if (assisting) {
+            const icon = this.npcIcons.get(npc)
+            if (icon) { icon.destroy(); this.npcIcons.delete(npc) }
+          }
+          const brainId = (npc.getData('brainId') as string) || ''
+          if (!brainId) continue
+          const params = {} as Record<string, any>
+          // Collect per-sprite params that might be used by brains
+          try { (npc as any).data?.each?.((k: string, v: any) => { if (k !== 'brainId' && k !== 'name' && k !== 'role' && k !== 'conversationBundles') params[k] = v }) } catch {}
+          tickNpc(brainId, { scene: this, npc, player: this.player as any, projectiles: this.projectiles, enemies: this.enemies, now: this.time.now }, { params })
+        }
+      }
+    } catch {}
 
     // Enemy brains tick + touch damage
     this.enemies.children.iterate((child): boolean => {
@@ -1454,27 +1549,50 @@ export default class WorldScene extends Phaser.Scene {
     if (!nearest.s || nearest.d > 120) { console.log('[World] no NPC in range to talk; dist', nearest.d); return }
     // Determine which nearby NPC we are targeting
     const target = nearest.s
+    // If NPC is in assist mode, do not allow interaction
+    if (target?.getData('assistMode')) { console.log('[World] NPC is assisting; interaction disabled') ; return }
     if (!target) return
     try {
       import('@/systems/NPCConversations').then((mod) => {
         const idGuess = `npc_${(target as any).name || 'Shopkeeper'}`
-        const cfg = (mod as any).getNpcConversation?.(idGuess) || { bundleId: 'bundle_shopkeeper' }
+        console.log('[World.tryTalk] npcId guess', idGuess)
+        let chosen = (mod as any).selectNpcBundle?.(this, target as any)
+        const mapping = (mod as any).getNpcConversation?.(idGuess)
+        console.log('[World.tryTalk] chosen bundle', chosen?.bundleId, 'mapped bundle', mapping?.bundleId)
+        if (!chosen?.bundleId && !mapping?.bundleId) {
+          // As a last resort, auto-scan all bundles for a suitable one
+          try { chosen = (mod as any).autoSelectBundleForNpc?.(this, target as any) } catch {}
+          console.log('[World.tryTalk] auto-selected bundle', chosen?.bundleId)
+        }
+        const bundleId: string | undefined = chosen?.bundleId || mapping?.bundleId
+        if (!bundleId) {
+          // No conversation for this NPC; if it's a shopkeeper, open shop, otherwise ignore
+          const role = (target.getData('role') as string) || ''
+          console.log('[World.tryTalk] no bundleId; role=', role)
+          if (role === 'shopkeeper') { this.openShop(); return }
+          return
+        }
+        // Set modal flags now that we know we have a conversation to open
+        console.log('[World.tryTalk] opening conversation bundle', bundleId)
+        this.uiModalOpen = true
+        this.hotbar?.setAllowSkillClick(false)
+        const esc = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.ESC)
+        esc?.once('down', () => { this.uiModalOpen = false; this.hotbar?.setAllowSkillClick(true) })
         // If there is a completed quest awaiting turn-in, jump directly to the turn-in node
         import('@/systems/Quests').then(qm => {
-          const summary = (mod as any).summarizeBundleQuests?.(cfg.bundleId) || { turnins: [] }
+          const summary = (mod as any).summarizeBundleQuests?.(bundleId) || { turnins: [] }
           const ready = (summary.turnins || []).find((qid: string) => (qm as any).getQuestState?.(qid)?.completed)
+          console.log('[World.tryTalk] bundle summary', summary, 'readyTurnIn', ready)
           if (ready) {
-            const nodeId = (mod as any).findTurnInNode?.(cfg.bundleId, ready)
-            ;(mod as any).openConversation?.(this, cfg.bundleId, nodeId)
+            const nodeId = (mod as any).findTurnInNode?.(bundleId, ready)
+            console.log('[World.tryTalk] jumping to node', nodeId)
+            ;(mod as any).openConversation?.(this, bundleId, nodeId, target as any)
           } else {
-            ;(mod as any).openConversation?.(this, cfg.bundleId)
+            console.log('[World.tryTalk] opening default node for bundle', bundleId)
+            ;(mod as any).openConversation?.(this, bundleId, undefined, target as any)
           }
         })
       })
-      this.uiModalOpen = true
-      this.hotbar?.setAllowSkillClick(false)
-      const esc = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.ESC)
-      esc?.once('down', () => { this.uiModalOpen = false; this.hotbar?.setAllowSkillClick(true) })
     } catch (e) {
       console.warn('[World] conversation failed, fallback to shop if available')
       const role = (nearest.s.getData('role') as string) || ''

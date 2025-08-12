@@ -7,7 +7,15 @@
     "portals": [
         { "id": "portal_town", "name": "Return to Town", "destinationScene": "World", "destinationId": "town", "x": 120, "y": 140 }
     ],
-    "npcs": [],
+    "npcs": [{
+        "id": "npc_dungeon_mentor",
+        "name": "Mentor",
+        "role": "questgiver",
+        "x": 460,
+        "y": 300,
+        "params": { "requireActive": ["q_visit_dungeon"] },
+        "conversationBundles": ["bundle_dungeon_mentor"]
+    }],
     "obstacles": [],
     "checkpoints": [{ "x": 400, "y": 300, "name": "Dungeon Checkpoint" }],
     "spawners": [

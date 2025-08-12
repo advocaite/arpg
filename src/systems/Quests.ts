@@ -8,6 +8,8 @@ export type QuestDef = {
   targetMonsterId: string
   requiredCount: number
   rewards?: { xp?: number; coins?: number; itemId?: string }
+  // Whether this quest can be taken again after completion
+  repeatable?: boolean
 }
 
 export type QuestState = {
@@ -17,6 +19,7 @@ export type QuestState = {
 }
 
 const questDefs: Record<string, QuestDef> = {}
+let __activeCharacterId: number = 0
 
 export function loadQuestDefs(scene: Phaser.Scene): void {
   try {
@@ -24,17 +27,40 @@ export function loadQuestDefs(scene: Phaser.Scene): void {
     const arr: QuestDef[] = Array.isArray(json?.quests) ? json.quests : []
     for (const q of arr) questDefs[q.id] = q
   } catch {}
+  // Capture active character id for per-character quest state
+  try {
+    const anyScene: any = scene
+    const id = Number(anyScene?.character?.id || 0)
+    __activeCharacterId = Number.isFinite(id) ? id : 0
+    localStorage.setItem('quests.activeCharId', String(__activeCharacterId))
+  } catch {}
 }
 
 export function getQuestDef(id: string): QuestDef | undefined { return questDefs[id] }
 export function listQuestDefs(): QuestDef[] { return Object.values(questDefs) }
 
+function keyFor(suffix: 'state' | 'completed'): string {
+  const idRaw = localStorage.getItem('quests.activeCharId')
+  const id = Number.isFinite(Number(idRaw)) ? String(idRaw) : String(__activeCharacterId || 0)
+  return suffix === 'state' ? `quests.state.${id}` : `quests.completed.${id}`
+}
 function loadState(): QuestState[] {
-  try { return JSON.parse(localStorage.getItem('quests.state') || '[]') } catch { return [] }
+  try { return JSON.parse(localStorage.getItem(keyFor('state')) || '[]') } catch { return [] }
 }
-function saveState(list: QuestState[]): void {
-  try { localStorage.setItem('quests.state', JSON.stringify(list)) } catch {}
+function saveState(list: QuestState[]): void { try { localStorage.setItem(keyFor('state'), JSON.stringify(list)) } catch {} }
+
+type QuestCompletion = { id: string; times: number; lastAt: number }
+function loadCompleted(): QuestCompletion[] { try { return JSON.parse(localStorage.getItem(keyFor('completed')) || '[]') } catch { return [] } }
+function saveCompleted(list: QuestCompletion[]): void { try { localStorage.setItem(keyFor('completed'), JSON.stringify(list)) } catch {} }
+function addCompleted(id: string): void {
+  const list = loadCompleted()
+  const now = Date.now()
+  const idx = list.findIndex(e => e.id === id)
+  if (idx >= 0) { list[idx].times += 1; list[idx].lastAt = now } else { list.push({ id, times: 1, lastAt: now }) }
+  saveCompleted(list)
 }
+export function hasCompletedQuest(id: string): boolean { return loadCompleted().some(e => e.id === id) }
+export function getQuestCompletedCount(id: string): number { const e = loadCompleted().find(x => x.id === id); return e ? e.times : 0 }
 
 export function getActiveQuests(): QuestState[] { return loadState().filter(q => !q.completed) }
 export function getQuestState(id: string): QuestState | undefined { return loadState().find(q => q.id === id) }
@@ -43,6 +69,12 @@ export function getAllQuestStates(): QuestState[] { return loadState() }
 export function grantQuest(id: string): void {
   const list = loadState()
   if (list.some(q => q.id === id)) return
+  // Prevent granting non-repeatable quests if already completed in the past
+  const def = questDefs[id]
+  if (def && def.repeatable === false && hasCompletedQuest(id)) {
+    try { console.log('[Quests] grant skipped non-repeatable already completed', id) } catch {}
+    return
+  }
   list.push({ id, progress: 0, completed: false })
   saveState(list)
 }
@@ -94,6 +126,8 @@ export function completeQuestIfReady(scene: Phaser.Scene, id: string, opts?: { o
   // Remove from active list
   list.splice(idx, 1)
   saveState(list)
+  // Record completion for repeatability checks
+  addCompleted(id)
   opts?.onReward?.(reward as any)
   return true
 }

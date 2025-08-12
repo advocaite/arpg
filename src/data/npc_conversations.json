@@ -1,55 +1,126 @@
 {
     "bundles": [{
-        "id": "bundle_shopkeeper",
-        "nodes": [{
-                "id": "welcome",
-                "type": "normal",
-                "title": "Shopkeeper",
-                "lines": [
-                    { "id": "w1", "text": "Welcome! Care to browse my wares?" }
-                ],
-                "options": [
-                    { "id": "opt_shop", "label": "Open Shop", "openShop": true },
-                    { "id": "opt_news", "label": "Any news?", "nextConversationId": "gossip_1" },
-                    { "id": "opt_quest", "label": "Do you have any work?", "nextConversationId": "quest_offer" },
-                    { "id": "opt_bye", "label": "Goodbye" }
-                ]
-            },
-            {
-                "id": "quest_offer",
-                "type": "quest",
-                "title": "Shopkeeper",
-                "lines": [
-                    { "id": "q1", "text": "The roads are unsafe. Cull 100 Chasers in the Arena and I'll make it worth your while." }
-                ],
-                "options": [
-                    { "id": "opt_accept", "label": "Accept: Cull the Chasers", "grantQuestId": "q_hunt_chasers", "nextConversationId": "welcome" },
-                    { "id": "opt_decline", "label": "Not now", "nextConversationId": "welcome" }
-                ]
-            },
-            {
-                "id": "quest_turnin",
-                "type": "quest",
-                "title": "Shopkeeper",
-                "lines": [
-                    { "id": "qt1", "text": "You've done it? Excellent work! Here's your reward." }
-                ],
-                "options": [
-                    { "id": "opt_complete", "label": "Complete quest", "completeQuestId": "q_hunt_chasers", "nextConversationId": "welcome" }
-                ]
-            },
-            {
-                "id": "gossip_1",
-                "type": "gossip",
-                "lines": [
-                    { "id": "g1", "text": "Monsters have been restless beyond the east gate.", "soundKey": "vo_gossip_shopkeeper" }
-                ],
-                "options": [
-                    { "id": "opt_back", "label": "Back", "nextConversationId": "welcome" }
-                ]
-            }
-        ]
-    }],
+            "id": "bundle_shopkeeper",
+            "nodes": [{
+                    "id": "welcome",
+                    "type": "normal",
+                    "title": "Shopkeeper",
+                    "lines": [
+                        { "id": "w1", "text": "Welcome! Care to browse my wares?" }
+                    ],
+                    "options": [
+                        { "id": "opt_shop", "label": "Open Shop", "openShop": true },
+                        { "id": "opt_news", "label": "Any news?", "nextConversationId": "gossip_1" },
+                        { "id": "opt_quest", "label": "Do you have any work?", "nextConversationId": "quest_offer" },
+                        { "id": "opt_portal", "label": "Can you open a portal to the dungeon?", "actionRef": "npc.moveToAndOpenPortal", "actionParams": { "destinationScene": "World", "destinationId": "dungeon_world", "portalName": "To Dungeon" } },
+                        { "id": "opt_bye", "label": "Goodbye" }
+                    ]
+                },
+                {
+                    "id": "quest_offer",
+                    "type": "quest",
+                    "title": "Shopkeeper",
+                    "lines": [
+                        { "id": "q1", "text": "The roads are unsafe. Cull 100 Chasers in the Arena and I'll make it worth your while." }
+                    ],
+                    "options": [
+                        { "id": "opt_accept", "label": "Accept: Cull the Chasers", "grantQuestId": "q_hunt_chasers", "nextConversationId": "welcome" },
+                        { "id": "opt_decline", "label": "Not now", "nextConversationId": "welcome" }
+                    ]
+                },
+                {
+                    "id": "quest_turnin",
+                    "type": "quest",
+                    "title": "Shopkeeper",
+                    "lines": [
+                        { "id": "qt1", "text": "You've done it? Excellent work! Here's your reward." }
+                    ],
+                    "options": [
+                        { "id": "opt_complete", "label": "Complete quest", "completeQuestId": "q_hunt_chasers", "nextConversationId": "welcome" }
+                    ]
+                },
+                {
+                    "id": "gossip_1",
+                    "type": "gossip",
+                    "lines": [
+                        { "id": "g1", "text": "Monsters have been restless beyond the east gate.", "soundKey": "vo_gossip_shopkeeper" }
+                    ],
+                    "options": [
+                        { "id": "opt_back", "label": "Back", "nextConversationId": "welcome" }
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "bundle_town_mentor",
+            "nodes": [{
+                    "id": "welcome",
+                    "type": "quest",
+                    "title": "Mentor",
+                    "lines": [{ "id": "l1", "text": "Head into the dungeon and take a look around." }],
+                    "require": { "questNotActiveIds": ["q_visit_dungeon"], "questNotCompletedIds": ["q_visit_dungeon"] },
+                    "options": [
+                        { "id": "accept", "label": "Accept: Visit the Dungeon", "grantQuestId": "q_visit_dungeon", "nextConversationId": "after" },
+                        { "id": "bye", "label": "Goodbye" }
+                    ]
+                },
+                {
+                    "id": "after",
+                    "type": "normal",
+                    "lines": [{ "id": "l2", "text": "I'll be around." }],
+                    "options": [{ "id": "done", "label": "Okay" }]
+                }
+            ]
+        },
+        {
+            "id": "bundle_dungeon_mentor",
+            "nodes": [{
+                    "id": "welcome",
+                    "type": "quest",
+                    "title": "Mentor",
+                    "lines": [
+                        { "id": "l1", "text": "You made it. Good work." },
+                        { "id": "l2", "text": "I have another task: report back to me in town." }
+                    ],
+                    "require": { "questActiveIds": ["q_visit_dungeon"], "predicateRef": "npc.named", "predicateParams": { "name": "Mentor" } },
+                    "options": [
+                        { "id": "grant_return", "label": "I'm on it", "actionRef": "quest.completeGrantAndDespawn", "actionParams": { "completeId": "q_visit_dungeon", "grantId": "q_report_town" } },
+                        { "id": "decline", "label": "Can't be bothered", "nextConversationId": "bye" }
+                    ]
+                },
+                {
+                    "id": "bye",
+                    "type": "normal",
+                    "lines": [{ "id": "b1", "text": "As you wish." }],
+                    "options": [{ "id": "ok", "label": "Leave" }]
+                }
+            ]
+        },
+        {
+            "id": "bundle_town_mentor_return",
+            "nodes": [{
+                    "id": "welcome",
+                    "type": "quest",
+                    "title": "Mentor",
+                    "lines": [{ "id": "l1", "text": "Well done. Ready for more work?" }],
+                    "require": { "questCompletedIds": ["q_visit_dungeon"], "questActiveIds": ["q_report_town"], "predicateRef": "npc.named", "predicateParams": { "name": "Mentor" } },
+                    "options": [
+                        { "id": "turnin_return", "label": "Report back (auto-accept next)", "completeQuestId": "q_report_town", "actionRef": "quest.completeAndGrant", "actionParams": { "completeId": "q_report_town", "grantId": "q_next_task" }, "nextConversationId": "more" },
+                        { "id": "turnin_only", "label": "Report back (no auto-accept)", "completeQuestId": "q_report_town", "nextConversationId": "more" }
+                    ]
+                },
+                {
+                    "id": "more",
+                    "type": "quest",
+                    "lines": [{ "id": "l2", "text": "I have further tasks for you." }],
+                    "options": [
+                        { "id": "accept_more", "label": "Accept next quest", "grantQuestId": "q_next_task" },
+                        { "id": "bye", "label": "Later" }
+                    ]
+                }
+            ]
+        }
+    ],
     "npcs": [
         { "npcId": "npc_Shopkeeper", "bundleId": "bundle_shopkeeper", "gossip": { "radius": 140, "cooldownMs": 10000 } }
     ]

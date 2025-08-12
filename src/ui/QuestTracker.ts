@@ -5,6 +5,7 @@ export default class QuestTrackerUI {
   private scene: Phaser.Scene
   private container?: Phaser.GameObjects.Container
   private listText?: Phaser.GameObjects.Text
+  private lineItems: Phaser.GameObjects.Text[] = []
 
   constructor(scene: Phaser.Scene) { this.scene = scene }
 
@@ -34,18 +35,18 @@ export default class QuestTrackerUI {
     for (const s of states) {
       const def = getQuestDef(s.id)
       if (!def) continue
-      const prog = `${s.progress}/${def.requiredCount}`
+      const showProg = typeof def.requiredCount === 'number' && def.requiredCount > 0
+      const prog = showProg ? `${s.progress}/${def.requiredCount}` : (s.completed ? 'Done' : 'Active')
       const color = s.completed ? '#ffdd66' : '#ffffff'
-      lines.push(`[c=${color}]${def.name}: ${prog}`)
+      lines.push(`[c=${color}]${def.name}${showProg ? ': ' + prog : ''}`)
     }
+    // Destroy previously created line items
+    try { this.lineItems.forEach(t => t.destroy()); this.lineItems = [] } catch {}
     // Phaser texts do not support inline color tags; split by line to tint per-line
     this.listText.setText('')
     const y0 = -28
     const dy = 16
-    const children = [this.listText]
-    // Remove prior children except bg/title; rebuild colored lines
     const container = this.container!
-    container.removeBetween(2)
     for (let i = 0; i < lines.length; i++) {
       const raw = lines[i]
       const m = raw.match(/^\[c=([^\]]+)\](.*)$/)
@@ -53,6 +54,7 @@ export default class QuestTrackerUI {
       const txt = m ? m[2] : raw
       const t = this.scene.add.text(-140, y0 + i * dy, txt, { fontFamily: 'monospace', color: col })
       container.add(t)
+      this.lineItems.push(t)
     }
   }
 

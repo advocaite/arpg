@@ -223,7 +223,23 @@ export default class PainterScene extends Phaser.Scene {
     // Portals
     try { (cfg.portals || []).forEach((p: any) => push('portal_generic', 'portal', p.x, p.y, { name: p.name, destinationScene: p.destinationScene, destinationId: p.destinationId })) } catch {}
     // NPCs (default to shopkeeper role if missing)
-    try { (cfg.npcs || []).forEach((n: any) => push('npc_shopkeeper', 'npc', n.x, n.y, { name: n.name, role: n.role || 'shopkeeper' })) } catch {}
+    try {
+      (cfg.npcs || []).forEach((n: any) => {
+        const p = (n.params || {})
+        push('npc_shopkeeper', 'npc', n.x, n.y, {
+          name: n.name,
+          role: n.role || 'shopkeeper',
+          brainId: n.brainId,
+          brainParams: p && typeof p === 'object' ? p : {},
+          conversationBundles: Array.isArray(n.conversationBundles) ? n.conversationBundles : [],
+          // Visibility requirements (either at root or inside params)
+          requireActive: p.requireActive || n.requireActive || [],
+          requireCompleted: p.requireCompleted || n.requireCompleted || [],
+          requireNotActive: p.requireNotActive || n.requireNotActive || [],
+          requireNotCompleted: p.requireNotCompleted || n.requireNotCompleted || []
+        })
+      })
+    } catch {}
     // Decor (non-colliding)
     try { (cfg.decor || []).forEach((d: any) => push('decor_leaves', 'decor', d.x, d.y, { kind: d.kind, tint: d.tint })) } catch {}
     // Spawners
@@ -478,6 +494,38 @@ export default class PainterScene extends Phaser.Scene {
         const v = prompt(`NPC role (${presets.join(', ')})`, current)
         if (v !== null) { o.params.role = v; this.pushHistory() }
       })
+      y = this.addButton(`Brain Id: ${o.params.brainId || '(none)'}`, y, () => { const v = prompt('NPC brain id (e.g., brain_assist_player)', o.params.brainId || ''); if (v !== null) { o.params.brainId = v || undefined; this.pushHistory() } })
+      y = this.addButton('Brain Params (JSON)', y, () => {
+        const cur = JSON.stringify(o.params.brainParams || {}, null, 2)
+        const v = prompt('Enter brain params JSON', cur)
+        if (v !== null) {
+          try { o.params.brainParams = JSON.parse(v) } catch { /* ignore parse error */ }
+          this.pushHistory()
+        }
+      })
+      y = this.addButton('Conversation Bundles (comma-separated)', y, () => {
+        const list = Array.isArray(o.params.conversationBundles) ? o.params.conversationBundles : []
+        const v = prompt('Bundle ids (comma-separated)', list.join(','))
+        if (v !== null) { o.params.conversationBundles = v.split(',').map(s => s.trim()).filter(Boolean); this.pushHistory() }
+      })
+      // Visibility gates
+      const mkList = (arr: any) => Array.isArray(arr) ? arr : []
+      y = this.addButton(`Require Active (comma)`, y, () => {
+        const v = prompt('Quest ids that must be active (comma-separated)', mkList(o.params.requireActive).join(','))
+        if (v !== null) { o.params.requireActive = v.split(',').map((s: string) => s.trim()).filter(Boolean); this.pushHistory() }
+      })
+      y = this.addButton(`Require Completed (comma)`, y, () => {
+        const v = prompt('Quest ids that must be completed (comma-separated)', mkList(o.params.requireCompleted).join(','))
+        if (v !== null) { o.params.requireCompleted = v.split(',').map((s: string) => s.trim()).filter(Boolean); this.pushHistory() }
+      })
+      y = this.addButton(`Require Not Active (comma)`, y, () => {
+        const v = prompt('Quest ids that must NOT be active (comma-separated)', mkList(o.params.requireNotActive).join(','))
+        if (v !== null) { o.params.requireNotActive = v.split(',').map((s: string) => s.trim()).filter(Boolean); this.pushHistory() }
+      })
+      y = this.addButton(`Require Not Completed (comma)`, y, () => {
+        const v = prompt('Quest ids that must NOT be completed (comma-separated)', mkList(o.params.requireNotCompleted).join(','))
+        if (v !== null) { o.params.requireNotCompleted = v.split(',').map((s: string) => s.trim()).filter(Boolean); this.pushHistory() }
+      })
     } else if (type === 'spawner') {
       y = this.addButton('Monster Id', y, () => { const v = prompt('Monster id', o.params.monsterId || 'chaser_basic'); if (v !== null) { o.params.monsterId = v; this.pushHistory() } })
       y = this.addNumControl('Every Ms', Number(o.params.everyMs ?? 1000), (nv) => { o.params.everyMs = nv }, y, 50, 100, 60000)
@@ -521,7 +569,7 @@ export default class PainterScene extends Phaser.Scene {
       if (o.def.type === 'obstacle') out.obstacles!.push({ x: o.x, y: o.y })
       if (o.def.type === 'light') (out as any).lights = [ ...(out as any).lights || [], { x: o.x, y: o.y, ...(o.params || {}) } ]
       if (o.def.type === 'portal') out.portals.push({ id: `portal_${out.portals.length+1}`, name: o.params?.name || 'Portal', destinationScene: o.params?.destinationScene || 'World', destinationId: o.params?.destinationId || 'town', x: o.x, y: o.y })
-      if (o.def.type === 'npc') out.npcs.push({ id: `npc_${out.npcs.length+1}`, name: o.params?.name || 'NPC', role: o.params?.role || 'shopkeeper', x: o.x, y: o.y } as any)
+      if (o.def.type === 'npc') out.npcs.push({ id: `npc_${out.npcs.length+1}`, name: o.params?.name || 'NPC', role: o.params?.role || 'shopkeeper', x: o.x, y: o.y, brainId: o.params?.brainId, params: { ...(o.params?.brainParams || {}), requireActive: o.params?.requireActive, requireCompleted: o.params?.requireCompleted, requireNotActive: o.params?.requireNotActive, requireNotCompleted: o.params?.requireNotCompleted }, conversationBundles: Array.isArray(o.params?.conversationBundles) ? o.params?.conversationBundles : undefined } as any)
       if (o.def.type === 'spawner') (out as any).spawners = [ ...(out as any).spawners || [], { monsterId: o.params?.monsterId || 'chaser_basic', everyMs: Number(o.params?.everyMs ?? 1000), count: Number(o.params?.count ?? 1), limit: Number(o.params?.limit ?? 0), startDelayMs: Number(o.params?.startDelayMs ?? 0) } ]
       if (o.def.type === 'checkpoint') (out as any).checkpoints = [ ...(out as any).checkpoints || [], { x: o.x, y: o.y, name: o.params?.name } ]
       if (o.def.type === 'decor') (out as any).decor = [ ...(out as any).decor || [], { x: o.x, y: o.y, ...(o.params || {}) } ]

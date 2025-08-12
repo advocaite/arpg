@@ -80,16 +80,19 @@ export default class MainMenuScene extends Phaser.Scene {
     }
 
     // Bottom buttons
-    const btnPlay = this.add.text(this.scale.width / 2 - 120, this.scale.height - 80, '[ Play ]', { fontFamily: 'monospace', color: '#aaf' }).setOrigin(0.5)
+    const btnPlay = this.add.text(this.scale.width / 2 - 180, this.scale.height - 80, '[ Play ]', { fontFamily: 'monospace', color: '#aaf' }).setOrigin(0.5)
     btnPlay.setInteractive({ useHandCursor: true })
     btnPlay.on('pointerdown', () => this.tryStart())
-    const btnCreate = this.add.text(this.scale.width / 2, this.scale.height - 80, '[ Create/Edit ]', { fontFamily: 'monospace', color: '#aaf' }).setOrigin(0.5)
+    const btnCreate = this.add.text(this.scale.width / 2 - 10, this.scale.height - 80, '[ Create/Edit ]', { fontFamily: 'monospace', color: '#aaf' }).setOrigin(0.5)
     btnCreate.setInteractive({ useHandCursor: true })
     btnCreate.on('pointerdown', () => this.openCreator(this.selectedSlot))
-    const btnDelete = this.add.text(this.scale.width / 2 + 140, this.scale.height - 80, '[ Delete ]', { fontFamily: 'monospace', color: '#faa' }).setOrigin(0.5)
+    const btnDelete = this.add.text(this.scale.width / 2 + 160, this.scale.height - 80, '[ Delete ]', { fontFamily: 'monospace', color: '#faa' }).setOrigin(0.5)
     btnDelete.setInteractive({ useHandCursor: true })
     btnDelete.on('pointerdown', () => this.deleteSlot(this.selectedSlot))
-    this.ui.add(btnPlay); this.ui.add(btnCreate); this.ui.add(btnDelete)
+    const btnResetQuests = this.add.text(this.scale.width / 2, this.scale.height - 48, '[ Reset Quest Data ]', { fontFamily: 'monospace', color: '#ffd166' }).setOrigin(0.5)
+    btnResetQuests.setInteractive({ useHandCursor: true })
+    btnResetQuests.on('pointerdown', () => this.resetQuestDataForSelected())
+    this.ui.add(btnPlay); this.ui.add(btnCreate); this.ui.add(btnDelete); this.ui.add(btnResetQuests)
   }
 
   private deleteSlot(idx: number): void {
@@ -98,6 +101,19 @@ export default class MainMenuScene extends Phaser.Scene {
     deleteCharacter(c.id)
     this.slots[idx] = { id: idx, name: '', class: 'melee', stats: { strength: 5, vitality: 5, intelligence: 5, dexterity: 5 } }
     this.renderSlots()
+  }
+
+  private resetQuestDataForSelected(): void {
+    const c = this.slots[this.selectedSlot]
+    if (!c.name) return
+    // Clear per-character quest state and completion logs
+    try {
+      localStorage.removeItem(`quests.state.${c.id}`)
+      localStorage.removeItem(`quests.completed.${c.id}`)
+      // Also clear NPC state so conversation/NPC visibility resets
+      localStorage.removeItem('npc.state')
+      alert('Quest data reset. Start or load the world to see changes.')
+    } catch {}
   }
 
   private openCreator(idx: number): void {

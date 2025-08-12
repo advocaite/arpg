@@ -1,15 +1,44 @@
 {
     "quests": [{
-        "id": "q_hunt_chasers",
-        "name": "Cull the Chasers",
-        "description": "Enter the Arena and slay 100 Chaser minions.",
-        "type": "kill",
-        "targetMonsterId": "chaser_basic",
-        "requiredCount": 100,
-        "rewards": {
-            "xp": 500,
-            "coins": 50,
-            "itemId": "potion_small"
+            "id": "q_hunt_chasers",
+            "name": "Cull the Chasers",
+            "description": "Enter the Arena and slay 100 Chaser minions.",
+            "type": "kill",
+            "targetMonsterId": "chaser_basic",
+            "requiredCount": 100,
+            "rewards": {
+                "xp": 500,
+                "coins": 50,
+                "itemId": "potion_small"
+            }
+        },
+        {
+            "id": "q_visit_dungeon",
+            "name": "Visit the Dungeon",
+            "description": "Travel to the dungeon and find the Mentor.",
+            "type": "kill",
+            "targetMonsterId": "chaser_basic",
+            "requiredCount": 1,
+            "rewards": { "xp": 50 },
+            "repeatable": false
+        },
+        {
+            "id": "q_report_town",
+            "name": "Report Back in Town",
+            "description": "Return to town and speak with the Mentor.",
+            "type": "kill",
+            "targetMonsterId": "chaser_basic",
+            "requiredCount": 1,
+            "rewards": { "xp": 50 }
+        },
+        {
+            "id": "q_next_task",
+            "name": "The Next Task",
+            "description": "Mentor has more work for you.",
+            "type": "kill",
+            "targetMonsterId": "chaser_basic",
+            "requiredCount": 1,
+            "rewards": { "xp": 75 }
         }
-    }]
+    ]
 }

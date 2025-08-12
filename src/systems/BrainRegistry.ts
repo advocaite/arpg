@@ -40,3 +40,20 @@ try {
 } catch {}
 
 
+// NPC brain support using the same registry. Adapts an NPC context to the generic brain handler.
+export type NpcBrainContext = {
+  scene: Phaser.Scene
+  npc: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody
+  player: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody
+  projectiles?: Phaser.Physics.Arcade.Group
+  enemies?: Phaser.Physics.Arcade.Group
+  now: number
+}
+
+export function executeNpcBrainTickByRef(ref: string, ctx: NpcBrainContext, args: BrainTickArgs): void {
+  const fn = registry[ref]
+  if (!fn) return
+  const adapted: BrainContext = { scene: ctx.scene, enemy: ctx.npc as any, player: ctx.player as any, projectiles: ctx.projectiles, enemies: ctx.enemies, now: ctx.now }
+  fn(adapted, args)
+}
+

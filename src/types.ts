@@ -76,6 +76,12 @@ export type NpcConfig = {
   role: NpcRole
   x: number
   y: number
+  // Optional AI brain for NPCs (patterned after monster brains)
+  brainId?: string
+  // Optional parameters for the NPC brain and behavior
+  params?: Record<string, number | string | boolean>
+  // Optional list of conversation bundle ids to consider for this NPC
+  conversationBundles?: string[]
 }
 
 export type WorldConfig = {

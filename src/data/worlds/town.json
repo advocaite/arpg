@@ -31,12 +31,21 @@
         }
     ],
     "npcs": [{
-        "id": "npc_1",
-        "name": "Shopkeeper",
-        "role": "shopkeeper",
-        "x": 912,
-        "y": 592
-    }],
+            "id": "npc_1",
+            "name": "Shopkeeper",
+            "role": "shopkeeper",
+            "x": 912,
+            "y": 592
+        },
+        {
+            "id": "npc_town_mentor",
+            "name": "Mentor",
+            "role": "questgiver",
+            "x": 1100,
+            "y": 600,
+            "conversationBundles": ["bundle_town_mentor", "bundle_town_mentor_return"]
+        }
+    ],
     "obstacles": [{
             "x": 816,
             "y": 560

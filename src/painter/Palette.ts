@@ -37,7 +37,7 @@ export const PALETTE: PlaceableDef[] = [
     id: 'npc_shopkeeper',
     type: 'npc',
     label: 'NPC: Shopkeeper',
-    defaults: { name: 'Shopkeeper', role: 'shopkeeper' }
+    defaults: { name: 'Shopkeeper', role: 'shopkeeper', brainId: '', brainParams: {}, conversationBundles: [] }
   }
   ,
   {
