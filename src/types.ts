@@ -90,12 +90,42 @@ export type WorldConfig = {
     key: string
     urls?: string[]
     volume?: number
+    combatKey?: string
+    combatUrls?: string[]
+    combatVolume?: number
   }
+  // Optional ambient light color (0xRRGGBB); only used if WebGL lights are enabled
+  ambientLight?: number
   portals: PortalConfig[]
   npcs: NpcConfig[]
   obstacles?: { x: number; y: number }[]
   spawners?: SpawnerConfig[]
   checkpoints?: CheckpointConfig[]
+  // Optional static lights/props (e.g., torches)
+  lights?: LightConfig[]
+  // Optional non-colliding decorative props
+  decor?: DecorConfig[]
+  // Optional starting spawn point for the player
+  start?: { x: number; y: number }
+}
+
+export type LightConfig = {
+  x: number
+  y: number
+  color?: number // default warm torch color
+  radius?: number // default 180
+  intensity?: number // default 1
+  flicker?: boolean // default true
+  // Optional types: 'point' behaves like torch; 'sky' follows camera to simulate skylight
+  type?: 'point' | 'sky'
+  followCamera?: boolean
+}
+
+export type DecorConfig = {
+  x: number
+  y: number
+  kind?: string
+  tint?: number
 }
 
 export type SpawnerConfig = {

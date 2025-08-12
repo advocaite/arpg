@@ -106,12 +106,13 @@
             "element": "fire",
             "powerRef": "aoe.wall",
             "cooldownMs": 1200,
-            "params": { "length": 200, "width": 36, "growMs": 240, "durationMs": 1000, "tickMs": 140, "color": 16737792, "element": "fire", "manaCost": 16 },
+            "params": { "length": 200, "width": 36, "growMs": 240, "durationMs": 3000, "tickMs": 140, "color": 16737792, "element": "fire", "manaCost": 16 },
             "runes": [
-                { "id": "r_long_wall", "name": "Long Wall", "description": "+40% length", "params": { "length": 280 } },
-                { "id": "r_wide_wall", "name": "Wide Wall", "description": "+40% width", "params": { "width": 50 } },
-                { "id": "r_frost_wall", "name": "Frost Wall", "description": "Convert to cold", "params": { "element": "cold", "color": 5592575 } },
-                { "id": "r_cursor_wall", "name": "Cursor Placement", "description": "Place wall at cursor location", "params": { "atCursor": true } }
+                { "id": "r_long_wall", "name": "Long Wall", "description": "+40% length converts to arcane and increase Arcane Damage by 10%", "params": { "length": 280, "element": "arcane" } },
+                { "id": "r_wide_wall", "name": "Wide Wall", "description": "+40% width converts to poison and increase Poison Damage by 10%", "params": { "width": 50, "element": "poison" } },
+                { "id": "r_frost_wall", "name": "Frost Wall", "description": "Convert to cold and increase chance to freeze by 10%", "params": { "element": "cold", "color": 5592575 } },
+                { "id": "r_lightning_wall", "name": "Lightning Wall", "description": "Convert to lightning and increase chance to shock by 10% random blots will strike enmeys with 100% increase to damage.", "params": { "element": "lightning", "color": 6724044 } },
+                { "id": "r_cursor_wall", "name": "Cursor Placement", "description": "Place wall at cursor location and increase duration by 1000ms becomes physical damage", "params": { "atCursor": true, "durationMs": 4000, "element": "physical" } }
             ]
         },
         {

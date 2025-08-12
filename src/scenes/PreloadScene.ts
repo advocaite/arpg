@@ -30,11 +30,26 @@ export default class PreloadScene extends Phaser.Scene {
     const ia = this.add.graphics({ x: 0, y: 0 }); ia.fillStyle(0x3355aa, 1); ia.fillRect(0, 0, 24, 24); ia.lineStyle(2, 0x88aaff, 1); ia.strokeRoundedRect(2, 3, 20, 18, 6); ia.generateTexture('icon_armor', 24, 24); ia.destroy()
     const isk = this.add.graphics({ x: 0, y: 0 }); isk.fillStyle(0x8844cc, 1); isk.fillRect(0, 0, 24, 24); isk.lineStyle(2, 0xcc99ff, 1); isk.strokeRect(0, 0, 24, 24); isk.generateTexture('icon_skill', 24, 24); isk.destroy()
 
+    // Textures
+    try {
+      this.load.image('dotnoise', 'assets/textures/grain_dotnoise.png')
+    } catch {}
+    try { this.load.image('lut_neutral', 'assets/textures/neutral-lut.png') } catch {}
+
     // VO/SFX preload (place files under /assets/sounds)
     try {
       this.load.audio('vo_gossip_shopkeeper', [
         'assets/sounds/vo_gossip_shopkeeper.ogg',
         'assets/sounds/vo_gossip_shopkeeper.mp3'
+      ])
+      // Gameplay SFX (impact, projectile)
+      this.load.audio('sfx_impact', [
+        'assets/sounds/impact_01.ogg',
+        'assets/sounds/impact.mp3'
+      ])
+      this.load.audio('sfx_projectile', [
+        'assets/sounds/projectile_01.ogg',
+        'assets/sounds/projectile.mp3'
       ])
     } catch {}
 
@@ -54,6 +69,8 @@ export default class PreloadScene extends Phaser.Scene {
         'assets/music/bgm_town.ogg',
         'assets/music/bgm_town.mp3'
       ])
+      // Optional combat layers
+      try { this.load.audio('bgm_town_combat', ['assets/music/bgm_town_combat.ogg','assets/music/bgm_town_combat.mp3']) } catch {}
     } catch {}
   }
 

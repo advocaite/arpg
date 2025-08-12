@@ -24,6 +24,10 @@ export default function projectileRing(ctx: PowerContext, args: PowerInvokeArgs)
     const nx = Math.cos(angle), ny = Math.sin(angle)
     const p = (ctx.scene.physics as any).add.sprite(ox, oy, 'projectile')
     p.setDepth(1)
+    try { if ((ctx.scene as any).lights?.active) (p as any).setPipeline?.('Light2D') } catch {}
+    // Emissive proxy + trail for readability
+    try { executeEffectByRef('fx.emissiveGlow', { scene: ctx.scene, caster: p as any }, { target: p, color: 0xffd27a, scale: 1.6, alpha: 0.5, durationMs: 550 }) } catch {}
+    try { executeEffectByRef('fx.additiveTrail', { scene: ctx.scene, caster: p as any }, { target: p, color: 0xffd27a, lifeMs: 360, intervalMs: 22, alpha: 0.8, scale: 1.05, maxGhosts: 22 }) } catch {}
     // Tag projectile faction based on caster (player vs enemy)
     try {
       p.setDataEnabled();

@@ -8,9 +8,20 @@
         { "id": "portal_town", "name": "Return to Town", "destinationScene": "World", "destinationId": "town", "x": 120, "y": 100 }
     ],
     "npcs": [],
+    "ambientLight": 3421236,
+    "lights": [
+        { "x": 0, "y": 0, "color": 16754176, "radius": 5200, "intensity": 0.9, "type": "sky", "followCamera": true },
+        { "x": 180, "y": 160, "color": 16754176, "radius": 220, "intensity": 1, "flicker": true },
+        { "x": 1420, "y": 160, "color": 16754176, "radius": 220, "intensity": 1, "flicker": true },
+        { "x": 180, "y": 1040, "color": 16754176, "radius": 220, "intensity": 1, "flicker": true },
+        { "x": 1420, "y": 1040, "color": 16754176, "radius": 220, "intensity": 1, "flicker": true },
+        { "x": 800, "y": 160, "color": 16754176, "radius": 220, "intensity": 1, "flicker": true },
+        { "x": 800, "y": 1040, "color": 16754176, "radius": 220, "intensity": 1, "flicker": true }
+    ],
     "obstacles": [],
     "checkpoints": [{ "x": 800, "y": 600, "name": "Arena Checkpoint" }],
     "spawners": [
         { "monsterId": "chaser_basic", "everyMs": 1200, "count": 2, "limit": 40, "startDelayMs": 500 }
-    ]
+    ],
+    "start": { "x": 800, "y": 600 }
 }

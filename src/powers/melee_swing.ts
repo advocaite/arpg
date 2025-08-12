@@ -15,7 +15,10 @@ export default function meleeSwing(ctx: PowerContext, args: PowerInvokeArgs): vo
   const dmgColor = crit ? '#ff66ff' : '#ffd166'
 
   // Draw the sweep arc once for visuals
-  try { executeEffectByRef('fx.sweepArc', { scene: ctx.scene, caster: ctx.caster }, { radius: radius + offset, angle: dirAng, spreadDeg, color: crit ? 0xff66ff : 0xffd166 }) } catch {}
+  try {
+    executeEffectByRef('fx.sweepArc', { scene: ctx.scene, caster: ctx.caster }, { radius: radius + offset, angle: dirAng, spreadDeg, color: crit ? 0xff66ff : 0xffd166 })
+    executeEffectByRef('fx.squashImpact', { scene: ctx.scene, caster: ctx.caster }, { durationMs: 110 })
+  } catch {}
 
   if (!ctx.enemies) return
   // Iterate enemies; apply arc/distance filter and damage
@@ -34,6 +37,17 @@ export default function meleeSwing(ctx: PowerContext, args: PowerInvokeArgs): vo
     const newHp = Math.max(0, hp - damage)
     target.setData('hp', newHp)
     try { executeEffectByRef('fx.damageNumber', { scene: ctx.scene, caster: ctx.caster }, { x: target.x, y: target.y - 10, value: `${damage}`, color: dmgColor, durationMs: 450, element: String((args.skill as any)?.element || 'physical'), crit }) } catch {}
+    // Impact SFX
+    try { executeEffectByRef('fx.sfx', { scene: ctx.scene, caster: ctx.caster }, { key: 'sfx_impact', volume: 0.9, rate: 0.95 + Math.random() * 0.1, duck: { bus: 'bgm', amount: 0.35, durationMs: 140 } }) } catch {}
+    // Camera feedback on hit
+    try {
+      executeEffectByRef('fx.cameraShake', { scene: ctx.scene, caster: ctx.caster }, { intensity: crit ? 0.012 : 0.006, durationMs: crit ? 110 : 70 })
+      if (crit) executeEffectByRef('fx.critFlash', { scene: ctx.scene, caster: ctx.caster }, {})
+      // Mark scene in-combat and apply hit-stop on crits
+      const anyScene: any = ctx.scene
+      anyScene.__inCombatUntil = Math.max(anyScene.__inCombatUntil || 0, anyScene.time.now + (anyScene.__combatDecayMs || 1500))
+      if (crit) executeEffectByRef('fx.hitStop', { scene: ctx.scene, caster: ctx.caster }, { durationMs: 90 })
+    } catch {}
     // Item procs on hit
     try {
       const sceneAny: any = ctx.scene
@@ -89,6 +103,10 @@ export default function meleeSwing(ctx: PowerContext, args: PowerInvokeArgs): vo
         const award = Math.max(1, Math.floor(((target.getData('level') as number) || 1) * 5))
         anyScene.gainExperience?.(award)
         try { notifyMonsterKilled(String(target.getData('configId') || '')); (anyScene as any).refreshQuestUI?.() } catch {}
+        // Stronger feedback on kill
+        try {
+          executeEffectByRef('fx.cameraShake', { scene: ctx.scene, caster: ctx.caster }, { intensity: 0.014, durationMs: 120 })
+        } catch {}
         try {
           if (!(anyScene.__dropUtil)) { import('@/systems/DropSystem').then(mod => { anyScene.__dropUtil = mod }) }
           const util = anyScene.__dropUtil

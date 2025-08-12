@@ -26,6 +26,14 @@ export function executeSkill(cfg: SkillConfig, ctx: SkillContext, opts?: { runeI
     if (selectedRune?.params) {
       Object.assign(mergedParams, selectedRune.params)
     }
+    // Always include rune id and a boolean flag for easy checks in powers
+    if (selectedRune && typeof selectedRune.id === 'string') {
+      const runeId = selectedRune.id
+      mergedParams['runeId'] = runeId
+      const flagKey = runeId.startsWith('r_') ? runeId : (`r_${runeId}` as string)
+      // Only set if not already provided by the rune params
+      if (typeof mergedParams[flagKey] === 'undefined') mergedParams[flagKey] = true
+    }
     executePowerByRef(powerRef, ctx, { skill: cfg, rune: selectedRune, params: mergedParams })
     if (effectRef) executeEffectByRef(effectRef, { scene: ctx.scene, caster: ctx.caster }, mergedParams)
     return

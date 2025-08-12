@@ -1,0 +1,30 @@
+{
+    "id": "town_default_old",
+    "name": "Town_old",
+    "width": 1600,
+    "height": 1200,
+    "music": { "key": "bgm_town" },
+    "portals": [
+        { "id": "portal_arena_world", "name": "Arena (Fiery)", "destinationScene": "World", "destinationId": "arena_world", "x": 800, "y": 400 },
+        { "id": "portal_dungeon_world", "name": "Dungeon (Arcane)", "destinationScene": "World", "destinationId": "dungeon_world", "x": 700, "y": 400 },
+        { "id": "portal_world_demo", "name": "World (Orange)", "destinationScene": "World", "destinationId": "town", "x": 600, "y": 400 }
+    ],
+    "npcs": [
+        { "id": "npc_shopkeeper", "name": "Shopkeeper", "role": "shopkeeper", "x": 900, "y": 600 }
+    ],
+    "ambientLight": 3355443,
+    "lights": [
+        { "x": 750, "y": 420, "color": 16754176, "radius": 200, "intensity": 1, "flicker": true },
+        { "x": 900, "y": 605, "color": 16754176, "radius": 200, "intensity": 1, "flicker": true },
+        { "x": 780, "y": 540, "color": 16754176, "radius": 180, "intensity": 1, "flicker": true },
+        { "x": 820, "y": 540, "color": 16754176, "radius": 180, "intensity": 1, "flicker": true },
+        { "x": 840, "y": 500, "color": 16754176, "radius": 160, "intensity": 1, "flicker": true },
+        { "x": 0, "y": 0, "color": 3355443, "radius": 5200, "intensity": 1.7, "type": "sky", "followCamera": true }
+    ],
+    "obstacles": [
+        { "x": 820, "y": 560 },
+        { "x": 780, "y": 560 },
+        { "x": 840, "y": 520 }
+    ],
+    "start": { "x": 800, "y": 600 }
+}

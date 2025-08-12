@@ -25,6 +25,8 @@ import { applyDamageReduction } from '@/systems/Stats'
 import { expRequiredForLevel } from '@/systems/Experience'
 import { notifyMonsterKilled } from '@/systems/Quests'
 import { executeEffectByRef } from '@/systems/Effects'
+import PostFX from '@/postfx/PostFX'
+import AudioBus from '@/systems/AudioBus'
 import HoldAction from '@/ui/HoldAction'
 import { loadConversationData, getConversationBundle, getNpcConversation, attachGossip } from '@/systems/NPCConversations'
 
@@ -180,6 +182,16 @@ export default class WorldScene extends Phaser.Scene {
   private weaponFlatDamage = 0
   private bonusMaxHp = 0
   private bgm?: Phaser.Sound.BaseSound
+  // Camera/Combat feel
+  private __inCombatUntil: number = 0
+  private __baseZoom: number = 1
+  private __combatZoom: number = 1.06
+  private __combatDecayMs: number = 1500
+  // PostFX overlays
+  private __postfx?: PostFX
+  private __fxSettings: { allowShake: boolean; allowHitStop: boolean; allowVignette: boolean; allowFog: boolean; allowGrain: boolean; allowGrade: boolean } = { allowShake: true, allowHitStop: true, allowVignette: true, allowFog: true, allowGrain: true, allowGrade: true }
+  private __audio?: AudioBus
+  private __combatMusicActive: boolean = false
 
   constructor() { super({ key: 'World' }) }
 
@@ -190,7 +202,37 @@ export default class WorldScene extends Phaser.Scene {
 
   async create(): Promise<void> {
     this.cameras.main.setBackgroundColor('#0b0f18')
+    // camera base zoom capture
+    try { this.__baseZoom = (this.cameras?.main as any)?.zoom ?? 1 } catch {}
+    // PostFX overlays (vignette, grain, fog)
+    try {
+      this.__postfx = new PostFX(this)
+      // Fog color per world (optional overrides)
+      const fogColor = Number((this.worldConfig as any)?.fogColor ?? 0x3a4150)
+      const fogIntensity = Number((this.worldConfig as any)?.fogIntensity ?? 0.06)
+      this.__postfx.setFog({ color: fogColor, intensity: fogIntensity })
+      // Initial vignette based on HP ratio
+      const hpRatio = Math.max(0, Math.min(1, this.playerHp / Math.max(1, this.maxHp)))
+      const vignetteStrength = 0.35 + (1 - hpRatio) * 0.45
+      this.__postfx.setVignetteStrength(vignetteStrength)
+      // Honor toggles
+      this.__postfx.setVignetteEnabled(this.__fxSettings.allowVignette)
+      this.__postfx.setFogEnabled(this.__fxSettings.allowFog)
+      this.__postfx.setGrainEnabled(this.__fxSettings.allowGrain)
+      this.__postfx.setGradeEnabled(this.__fxSettings.allowGrade)
+    } catch {}
     this.pause = new PauseSystem(this)
+    // Audio
+    try { (this as any).__audio = new AudioBus(this) } catch {}
+    // Enable 2D lights if supported (WebGL)
+    try {
+      const renderer: any = this.game.renderer
+      const isWebGL = renderer && renderer.type === Phaser.WEBGL
+      if (isWebGL && (this.lights as any)?.enable) {
+        const amb = (this.worldConfig as any)?.ambientLight ?? 0x20242c
+        this.lights.enable().setAmbientColor(amb)
+      }
+    } catch {}
 
     // Inputs
     this.cursors = this.input.keyboard!.createCursorKeys()
@@ -279,11 +321,44 @@ export default class WorldScene extends Phaser.Scene {
       console.log('[World] walls disabled for debug')
     }
 
-    // Player
-    this.player = this.physics.add.sprite(w / 2, h / 2, 'player').setTint(0x55ccff)
+    // Obstacle props (simple static sprites) for light occlusion tests
+    try {
+      if (Array.isArray((this.worldConfig as any)?.obstacles)) {
+        for (const o of (this.worldConfig as any).obstacles) {
+          const s = this.physics.add.staticImage(o.x, o.y, 'wall').setAlpha(0.9)
+          try { (s as any).refreshBody?.() } catch {}
+          try { if ((this.lights as any)?.active) (s as any).setPipeline?.('Light2D') } catch {}
+          this.walls.add(s)
+        }
+      }
+    } catch {}
+
+    // Non-colliding decor (visual only)
+    try {
+      const list: Array<{ x: number; y: number; kind?: string; tint?: number }> = (this.worldConfig as any)?.decor || []
+      for (const d of list) {
+        const tint = typeof d.tint === 'number' ? d.tint : 0x6fbf73
+        // Use lightweight shape for now; can switch to sprite atlas later
+        const g = this.add.circle(d.x, d.y, 4, tint, 0.9)
+        g.setDepth(2)
+        // Optional shimmering for certain kinds
+        if ((d.kind || '').includes('banner')) {
+          this.tweens.add({ targets: g, alpha: 0.7, duration: 900, yoyo: true, repeat: -1 })
+        }
+      }
+    } catch {}
+
+    // Player spawn at world start if provided, otherwise center
+    const spawnX = (this.worldConfig as any)?.start?.x ?? (w / 2)
+    const spawnY = (this.worldConfig as any)?.start?.y ?? (h / 2)
+    this.player = this.physics.add.sprite(spawnX, spawnY, 'player').setTint(0x55ccff)
     this.player.body.setCircle(12)
     this.player.setCollideWorldBounds(true)
     this.player.setDataEnabled(); this.player.setData('faction', 'player')
+    try { if ((this.lights as any)?.active) (this.player as any).setPipeline?.('Light2D') } catch {}
+    try { executeEffectByRef('fx.shadowBlob', { scene: this, caster: this.player }, { target: this.player, offsetY: 12, alpha: 0.3 }) } catch {}
+    // subtle emissive glow on player for readability near torches
+    try { executeEffectByRef('fx.emissiveGlow', { scene: this, caster: this.player }, { target: this.player, color: 0x66aaff, scale: 1.25, alpha: 0.25, durationMs: 600 }) } catch {}
     // Now that player exists, safely register projectile overlap
     try {
       console.log('[World] registering projectile overlap (post-player)')
@@ -439,6 +514,11 @@ export default class WorldScene extends Phaser.Scene {
         this.bgm?.stop(); this.bgm?.destroy();
         this.bgm = this.sound.add(m.key, { loop: true, volume: typeof m.volume === 'number' ? m.volume : 0.6 })
         this.bgm.play()
+        // Prepare combat layer if configured
+        const combatKey = (m as any).combatKey || 'bgm_town_combat'
+        if ((this.cache.audio.exists(combatKey) || this.sound.get(combatKey))) {
+          try { (this as any).__audio?.ensureCombatLayer?.(combatKey, typeof (m as any).combatVolume === 'number' ? (m as any).combatVolume : 0.65) } catch {}
+        }
       } else {
         // Fallback to a generic per-world key if available
         const fallbackKey = this.worldId === 'town' || this.worldId === 'town_default' ? 'bgm_town' : undefined
@@ -446,6 +526,7 @@ export default class WorldScene extends Phaser.Scene {
           this.bgm?.stop(); this.bgm?.destroy();
           this.bgm = this.sound.add(fallbackKey, { loop: true, volume: 0.6 })
           this.bgm.play()
+          try { (this as any).__audio?.ensureCombatLayer?.('bgm_town_combat', 0.65) } catch {}
         }
       }
     } catch {}
@@ -466,9 +547,39 @@ export default class WorldScene extends Phaser.Scene {
         if (dest.includes('arena')) colors = { outer: 0xff6a33, inner: 0xffa133 } // fiery
         else if (dest.includes('dungeon')) colors = { outer: 0x9a66ff, inner: 0x5f2aff } // arcane
         else if (dest.includes('world')) colors = { outer: 0xffb347, inner: 0xff7f27 } // orange
-        ;(fx as any).executeEffectByRef?.('fx.portalVortex', { scene: this, caster: s as any }, { x: p.x, y: p.y, width: 96, height: 140, colorOuter: colors.outer, colorInner: colors.inner })
+        ;(fx as any).executeEffectByRef?.('fx.portalParticles', { scene: this, caster: s as any }, { x: p.x, y: p.y, colorOuter: colors.outer, colorInner: colors.inner, rate: 60 })
+        // Portal-colored light
+        try { if ((this.lights as any)?.active) this.lights.addLight(p.x, p.y, 220, colors.outer, 1) } catch {}
       } catch {}
+      try { if ((this.lights as any)?.active) (s as any).setPipeline?.('Light2D') } catch {}
     }
+
+    // Static lights (e.g., torches) from world config
+    try {
+      if ((this.lights as any)?.active && Array.isArray((this.worldConfig as any)?.lights)) {
+        for (const L of (this.worldConfig as any).lights) {
+          const color = Number(L.color ?? 0xffaa55)
+          const radius = Number(L.radius ?? 200)
+          const intensity = Number(L.intensity ?? 1)
+          const type: any = (L as any).type || 'point'
+          const light = this.lights.addLight(L.x, L.y, radius, color, intensity)
+          if (type === 'sky' || (L as any).followCamera) {
+            this.events.on(Phaser.Scenes.Events.UPDATE, () => {
+              light.x = this.cameras.main.midPoint.x
+              light.y = this.cameras.main.midPoint.y
+            })
+          }
+          if (type === 'point' && L.flicker !== false) {
+            this.time.addEvent({ loop: true, delay: 80, callback: () => {
+              light.radius = radius * (0.96 + Math.random() * 0.08)
+              light.intensity = intensity * (0.92 + Math.random() * 0.16)
+            } })
+            // Fiery torch particles at light source
+            try { executeEffectByRef('fx.torchParticles', { scene: this, caster: this.player }, { x: L.x, y: L.y, color }) } catch {}
+          }
+        }
+      }
+    } catch {}
 
     // NPCs
     await loadConversationData(this)
@@ -496,6 +607,7 @@ export default class WorldScene extends Phaser.Scene {
       const s = this.physics.add.sprite(n.x, n.y, 'player').setTint(0xffcc66)
       s.body.setCircle(12)
       ;(s as any).isInvulnerable = true
+      try { if ((this.lights as any)?.active) (s as any).setPipeline?.('Light2D') } catch {}
       try { s.setName?.(n.name); s.setData('name', n.name) } catch {}
       this.add.text(n.x, n.y - 28, n.name, { fontFamily: 'monospace', color: '#ffd166' }).setOrigin(0.5)
       s.setData('role', n.role)
@@ -601,6 +713,46 @@ export default class WorldScene extends Phaser.Scene {
   update(_time: number, delta: number): void {
     this.fpsText.setText(`FPS: ${Math.round(1000 / Math.max(1, delta))}`)
     if (!this.player || !this.player.body || !this.worldConfig) return
+    // Update PostFX (grain flicker) and HP-based vignette
+    try {
+      const hpRatio = Math.max(0, Math.min(1, this.playerHp / Math.max(1, this.maxHp)))
+      const vignetteStrength = 0.35 + (1 - hpRatio) * 0.45
+      if (this.__fxSettings.allowVignette) this.__postfx?.setVignetteStrength(vignetteStrength)
+      this.__postfx?.update(delta)
+    } catch {}
+
+    // Debug toggles (ALT/CTRL+F1..F6): shake, hitstop, vignette, fog, grain, grading
+    try {
+      const kb = this.input.keyboard
+      const ctrl = kb?.addKey(Phaser.Input.Keyboard.KeyCodes.CTRL)
+      // Use Alt as the modifier to avoid conflict with system shortcuts
+      const alt = kb?.addKey(Phaser.Input.Keyboard.KeyCodes.ALT)
+      if (kb?.checkDown(kb.addKey(Phaser.Input.Keyboard.KeyCodes.F1), 1) && (alt?.isDown || ctrl?.isDown)) this.__fxSettings.allowShake = !this.__fxSettings.allowShake
+      if (kb?.checkDown(kb.addKey(Phaser.Input.Keyboard.KeyCodes.F2), 1) && (alt?.isDown || ctrl?.isDown)) this.__fxSettings.allowHitStop = !this.__fxSettings.allowHitStop
+      if (kb?.checkDown(kb.addKey(Phaser.Input.Keyboard.KeyCodes.F3), 1) && (alt?.isDown || ctrl?.isDown)) { this.__fxSettings.allowVignette = !this.__fxSettings.allowVignette; this.__postfx?.setVignetteEnabled(this.__fxSettings.allowVignette) }
+      if (kb?.checkDown(kb.addKey(Phaser.Input.Keyboard.KeyCodes.F4), 1) && (alt?.isDown || ctrl?.isDown)) { this.__fxSettings.allowFog = !this.__fxSettings.allowFog; this.__postfx?.setFogEnabled(this.__fxSettings.allowFog) }
+      if (kb?.checkDown(kb.addKey(Phaser.Input.Keyboard.KeyCodes.F5), 1) && (alt?.isDown || ctrl?.isDown)) { this.__fxSettings.allowGrain = !this.__fxSettings.allowGrain; this.__postfx?.setGrainEnabled(this.__fxSettings.allowGrain) }
+      if (kb?.checkDown(kb.addKey(Phaser.Input.Keyboard.KeyCodes.F6), 1) && (alt?.isDown || ctrl?.isDown)) { this.__fxSettings.allowGrade = !this.__fxSettings.allowGrade; this.__postfx?.setGradeEnabled(this.__fxSettings.allowGrade) }
+      // Grain intensity quick adjust: Alt/Ctrl + F7/F8 to decrease/increase
+      if (kb?.checkDown(kb.addKey(Phaser.Input.Keyboard.KeyCodes.F7), 1) && (alt?.isDown || ctrl?.isDown)) {
+        try {
+          const pf: any = this.__postfx
+          if (pf && typeof pf.getGrainIntensity === 'function' && typeof pf.setGrainIntensity === 'function') {
+            const cur = pf.getGrainIntensity()
+            pf.setGrainIntensity(Math.max(0, cur - 0.05))
+          }
+        } catch {}
+      }
+      if (kb?.checkDown(kb.addKey(Phaser.Input.Keyboard.KeyCodes.F8), 1) && (alt?.isDown || ctrl?.isDown)) {
+        try {
+          const pf: any = this.__postfx
+          if (pf && typeof pf.getGrainIntensity === 'function' && typeof pf.setGrainIntensity === 'function') {
+            const cur = pf.getGrainIntensity()
+            pf.setGrainIntensity(Math.min(1, cur + 0.05))
+          }
+        } catch {}
+      }
+    } catch {}
     if (Phaser.Input.Keyboard.JustDown(this.escKey)) {
       const now = this.time.now
       if (this.uiModalOpen || now < (this.__suppressEscUntil || 0)) {
@@ -634,6 +786,26 @@ export default class WorldScene extends Phaser.Scene {
     }
 
     if (!this.uiModalOpen && Phaser.Input.Keyboard.JustDown(this.cursors.space!)) this.performAttack()
+    // Camera combat zoom handling
+    try {
+      const cm = this.cameras.main as any
+      const now = this.time.now
+      const inCombat = now < this.__inCombatUntil
+      // Music stems logic
+      if (inCombat && !this.__combatMusicActive) {
+        try { (this as any).__audio?.ensureCombatLayer?.(((this.worldConfig.music as any)?.combatKey) || 'bgm_town_combat', ((this.worldConfig.music as any)?.combatVolume) ?? 0.65) } catch {}
+        this.__combatMusicActive = true
+      } else if (!inCombat && this.__combatMusicActive && now > (this.__inCombatUntil + 200)) {
+        try { (this as any).__audio?.fadeOutCombatLayer?.(900) } catch {}
+        this.__combatMusicActive = false
+      }
+      const targetZoom = inCombat ? this.__combatZoom : this.__baseZoom
+      const current = cm.zoom ?? 1
+      const diff = targetZoom - current
+      if (Math.abs(diff) > 0.0001) {
+        cm.setZoom(current + diff * Math.min(1, 0.02 * (delta / 16)))
+      }
+    } catch {}
 
     // Hotbar: Q (potion), 1-4 skills
     if (Phaser.Input.Keyboard.JustDown(this.qKey) && this.hotbarCfg.potionRefId) {
@@ -860,11 +1032,13 @@ export default class WorldScene extends Phaser.Scene {
     for (let i = 0; i < coins; i++) {
       const p = this.physics.add.sprite(x + jitter(), y + jitter(), 'coin')
       p.setDepth(1); p.setData('drop', { type: 'coin', amount: 1 })
+      try { if ((this.lights as any)?.active) (p as any).setPipeline?.('Light2D') } catch {}
       this.pickups.add(p)
     }
     for (let i = 0; i < hearts; i++) {
       const p = this.physics.add.sprite(x + jitter(), y + jitter(), 'heart')
       p.setDepth(1); p.setData('drop', { type: 'heart', heal: 10 })
+      try { if ((this.lights as any)?.active) (p as any).setPipeline?.('Light2D') } catch {}
       this.pickups.add(p)
     }
     // MF scales item chance
@@ -876,6 +1050,7 @@ export default class WorldScene extends Phaser.Scene {
         const base = pool[Phaser.Math.Between(0, pool.length - 1)]
         const p = this.physics.add.sprite(x + jitter(), y + jitter(), base.type === 'weapon' ? 'icon_weapon' : 'icon_armor')
         p.setDepth(1); p.setData('drop', { type: 'item', itemId: base.id })
+        try { if ((this.lights as any)?.active) (p as any).setPipeline?.('Light2D') } catch {}
         this.pickups.add(p)
       }
     }
@@ -918,6 +1093,7 @@ export default class WorldScene extends Phaser.Scene {
   private openInventory(): void {
     this.uiModalOpen = true
     this.hotbar?.setAllowSkillClick(false)
+    try { (this as any).__audio?.duckForUIOpen?.() } catch {}
     const charId = this.character?.id ?? 0
     this.invUI?.open(this.inventory, (items) => {
       this.inventory = items
@@ -1177,6 +1353,7 @@ export default class WorldScene extends Phaser.Scene {
       const nx = Math.cos(ang), ny = Math.sin(ang)
       const p = this.physics.add.sprite(this.player.x, this.player.y, 'projectile')
       p.setDepth(1)
+      try { if ((this.lights as any)?.active) (p as any).setPipeline?.('Light2D') } catch {}
       p.body.allowGravity = false
       p.setActive(true)
       p.setVelocity(nx * 260, ny * 260)
@@ -1217,6 +1394,8 @@ export default class WorldScene extends Phaser.Scene {
     const y = Phaser.Math.Between(40, this.worldConfig!.height - 40)
     const e = this.physics.add.sprite(x, y, 'player').setTint(cfg?.tint ?? 0xff5555)
     e.body.setCircle(cfg?.bodyRadius ?? 12)
+    try { if ((this.lights as any)?.active) (e as any).setPipeline?.('Light2D') } catch {}
+    try { executeEffectByRef('fx.shadowBlob', { scene: this, caster: e as any }, { target: e, offsetY: 10, alpha: 0.28 }) } catch {}
     e.setDataEnabled()
     // Tag enemies with faction to distinguish projectile ownership
     try { e.setData('faction', 'enemy') } catch {}
@@ -1590,6 +1769,7 @@ export default class WorldScene extends Phaser.Scene {
     for (const c of list) {
       const s = this.physics.add.sprite(c.x, c.y, 'player').setTint(0x66aaff)
       s.body.setCircle(10)
+      try { if ((this.lights as any)?.active) (s as any).setPipeline?.('Light2D') } catch {}
       ;(s as any).isInvulnerable = true
       if (c.name) this.add.text(c.x, c.y - 26, c.name, { fontFamily: 'monospace', color: '#66aaff' }).setOrigin(0.5)
       this.physics.add.overlap(this.player, s, () => { this.lastCheckpoint = { x: c.x, y: c.y } })

@@ -12,5 +12,6 @@
     "checkpoints": [{ "x": 400, "y": 300, "name": "Dungeon Checkpoint" }],
     "spawners": [
         { "monsterId": "shooter_basic", "everyMs": 1500, "count": 1, "limit": 25, "startDelayMs": 800 }
-    ]
+    ],
+    "start": { "x": 400, "y": 300 }
 }

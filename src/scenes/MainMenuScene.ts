@@ -26,6 +26,13 @@ export default class MainMenuScene extends Phaser.Scene {
       if (e.key === 'ArrowDown') this.moveSelection(1)
       if (e.key === 'Enter') { e.preventDefault(); this.tryStart() }
       if (e.key.toLowerCase() === 'c') this.openCreator(this.selectedSlot)
+      if (e.key.toLowerCase() === 'p') {
+        const size = prompt('Enter world size WxH (e.g., 2000x1400)', '2000x1400') || '2000x1400'
+        const m = size.match(/(\d+)\s*[xX]\s*(\d+)/)
+        const w = m ? parseInt(m[1], 10) : 2000
+        const h = m ? parseInt(m[2], 10) : 1400
+        this.scene.start('Painter', { worldWidth: w, worldHeight: h })
+      }
       if (e.key.toLowerCase() === 'd') this.deleteSlot(this.selectedSlot)
     }
     this.input.keyboard?.on('keydown', handler)
@@ -51,7 +58,7 @@ export default class MainMenuScene extends Phaser.Scene {
 
   private renderSlots(): void {
     this.ui.removeAll(true)
-    const hint = this.add.text(this.scale.width / 2, this.scale.height - 32, 'Enter: Play  C: Create/Edit  D: Delete  ↑/↓: Select  (Click: Select, Double-Click: Play)', { fontFamily: 'monospace', color: '#bbb' }).setOrigin(0.5)
+    const hint = this.add.text(this.scale.width / 2, this.scale.height - 32, 'Enter: Play  C: Create/Edit  P: World Painter  D: Delete  ↑/↓: Select  (Click: Select, Double-Click: Play)', { fontFamily: 'monospace', color: '#bbb' }).setOrigin(0.5)
     this.ui.add(hint)
     for (let i = 0; i < 3; i++) {
       const c = this.slots[i]

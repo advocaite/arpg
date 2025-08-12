@@ -27,6 +27,9 @@ export default function projectileShoot(ctx: PowerContext, args: PowerInvokeArgs
   }
   const p = (ctx.scene.physics as any).add.sprite(ox, oy, 'projectile')
   p.setDepth(1)
+  try { if ((ctx.scene as any).lights?.active) (p as any).setPipeline?.('Light2D') } catch {}
+  // Additive trail for readability
+  try { executeEffectByRef('fx.additiveTrail', { scene: ctx.scene, caster: p as any }, { target: p, color: 0x88ccff, lifeMs: 320, intervalMs: 22, alpha: 0.75, scale: 1.05, maxGhosts: 20 }) } catch {}
   // Tag projectile faction based on caster (player vs enemy)
   try {
     p.setDataEnabled()
@@ -37,6 +40,8 @@ export default function projectileShoot(ctx: PowerContext, args: PowerInvokeArgs
   } catch {}
   // Phaser sometimes needs physics body ready before setting velocity; defer one tick
   ctx.scene.time.delayedCall(0, () => { if ((p as any).active && (p as any).body) p.setVelocity(nx * speed, ny * speed) })
+  // Launch SFX
+  try { executeEffectByRef('fx.sfx', { scene: ctx.scene, caster: ctx.caster }, { key: 'sfx_projectile', volume: 0.8, rate: 0.96 + Math.random() * 0.08 }) } catch {}
   ctx.projectiles?.add(p)
   const decayMs = Number(args.params['decayMs'] ?? 2000)
   ctx.scene.time.delayedCall(decayMs, () => p.destroy())
@@ -49,6 +54,15 @@ export default function projectileShoot(ctx: PowerContext, args: PowerInvokeArgs
       const newHp = Math.max(0, hp - dmgFinal)
       enemy.setData('hp', newHp)
       try { executeEffectByRef('fx.damageNumber', { scene: ctx.scene, caster: ctx.caster }, { x: enemy.x, y: enemy.y - 10, value: `${dmgFinal}`, element: elementVal, crit: isCrit }) } catch {}
+      try { executeEffectByRef('fx.sfx', { scene: ctx.scene, caster: ctx.caster }, { key: 'sfx_impact', volume: 0.85, rate: 0.95 + Math.random() * 0.1, duck: isCrit ? { bus: 'bgm', amount: 0.4, durationMs: 160 } : undefined }) } catch {}
+      // Feedback
+      try {
+        executeEffectByRef('fx.cameraShake', { scene: ctx.scene, caster: ctx.caster }, { intensity: isCrit ? 0.012 : 0.006, durationMs: isCrit ? 100 : 60 })
+        if (isCrit) executeEffectByRef('fx.critFlash', { scene: ctx.scene, caster: ctx.caster }, {})
+        const anyScene: any = ctx.scene
+        anyScene.__inCombatUntil = Math.max(anyScene.__inCombatUntil || 0, anyScene.time.now + (anyScene.__combatDecayMs || 1500))
+        if (isCrit) executeEffectByRef('fx.hitStop', { scene: ctx.scene, caster: ctx.caster }, { durationMs: 70 })
+      } catch {}
       // CC/Bleed application
       try {
         const anyScene: any = ctx.scene
@@ -83,6 +97,8 @@ export default function projectileShoot(ctx: PowerContext, args: PowerInvokeArgs
           if (!(anyScene.__dropUtil)) { import('@/systems/DropSystem').then(mod => { anyScene.__dropUtil = mod }) }
           const util = anyScene.__dropUtil
           if (util?.playerKillDrop) util.playerKillDrop(anyScene, enemy.x, enemy.y, 0.1)
+          // Stronger feedback on kill
+          try { executeEffectByRef('fx.cameraShake', { scene: ctx.scene, caster: ctx.caster }, { intensity: 0.014, durationMs: 110 }) } catch {}
         } catch {}
         enemy.destroy()
       }

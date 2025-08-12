@@ -5,7 +5,7 @@ export type EffectContext = {
   caster: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody
 }
 
-type EffectHandler = (ctx: EffectContext, params?: Record<string, number | string | boolean>) => void
+type EffectHandler = (ctx: EffectContext, params?: Record<string, any>) => void
 
 const registry: Record<string, EffectHandler> = {}
 
@@ -13,7 +13,7 @@ export function registerEffect(ref: string, handler: EffectHandler): void {
   registry[ref] = handler
 }
 
-export function executeEffectByRef(ref: string, ctx: EffectContext, params?: Record<string, number | string | boolean>): void {
+export function executeEffectByRef(ref: string, ctx: EffectContext, params?: Record<string, any>): void {
   const fn = registry[ref]
   if (fn) { fn(ctx, params); return }
   // default no-op if missing
