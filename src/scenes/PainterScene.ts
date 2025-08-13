@@ -242,10 +242,12 @@ export default class PainterScene extends Phaser.Scene {
     } catch {}
     // Decor (non-colliding)
     try { (cfg.decor || []).forEach((d: any) => push('decor_leaves', 'decor', d.x, d.y, { kind: d.kind, tint: d.tint })) } catch {}
-    // Spawners
+		// Spawners
     try { (cfg.spawners || []).forEach((s: any) => push('spawner_default', 'spawner', s.x, s.y, { monsterId: s.monsterId, everyMs: s.everyMs, count: s.count, limit: s.limit, startDelayMs: s.startDelayMs })) } catch {}
     // Checkpoints
     try { (cfg.checkpoints || []).forEach((c: any) => push('checkpoint_default', 'checkpoint', c.x, c.y, { name: c.name })) } catch {}
+		// Triggers
+		try { (cfg.triggers || []).forEach((t: any) => push('trigger_area', 'trigger', t.x, t.y, { id: t.id, ref: t.ref, width: t.width, height: t.height, params: t.params || {}, once: !!t.once, persist: !!t.persist })) } catch {}
     // Start point (single)
     try { if (cfg.start && typeof cfg.start.x === 'number' && typeof cfg.start.y === 'number') { list.push({ defId: 'start_point', type: 'start', x: cfg.start.x, y: cfg.start.y, params: {} }) } } catch {}
     this.rebuildFromSerialized(list)
@@ -296,10 +298,16 @@ export default class PainterScene extends Phaser.Scene {
     } else if (obj.def.type === 'checkpoint') {
       const c = this.add.star(x, y, 5, 3, 7, 0x66aaff, 1).setDepth(6)
       obj.visual = c
-    } else if (obj.def.type === 'start') {
+		} else if (obj.def.type === 'start') {
       const st = this.add.rectangle(x, y, 10, 10, 0x33ffaa, 1).setDepth(9)
       st.setStrokeStyle(1, 0x117755, 1)
       obj.visual = st
+		} else if (obj.def.type === 'trigger') {
+			const w = Number(obj.params?.width ?? this.gridSize)
+			const h = Number(obj.params?.height ?? this.gridSize)
+			const r = this.add.rectangle(x, y, w, h, 0xff00ff, 0.18).setDepth(2)
+			r.setStrokeStyle(1, 0xaa33aa, 1)
+			obj.visual = r
     }
     this.objects.push(obj)
     // Interactions on the visual
@@ -313,7 +321,7 @@ export default class PainterScene extends Phaser.Scene {
         })
       this.input.setDraggable(obj.visual as any, true)
     } catch {}
-    if (!suppressHistory && !this.isRestoring) this.pushHistory()
+		if (!suppressHistory && !this.isRestoring) this.pushHistory()
   }
 
   private removeAt(wx: number, wy: number): void {
@@ -481,10 +489,16 @@ export default class PainterScene extends Phaser.Scene {
           if (!Number.isNaN(parsed)) { o.params.color = parsed; try { (o.visual as any).setFillStyle?.(parsed, 1) } catch {}; this.pushHistory() }
         }
       })
+      // Visibility by trigger
+      y = this.addButton('Hidden By Trigger Id', y, () => { const v = prompt('Trigger id that hides this (persist=true once)', o.params.hiddenByTriggerId || ''); if (v !== null) { o.params.hiddenByTriggerId = v || undefined; this.pushHistory() } })
+      y = this.addButton('Shown By Trigger Id', y, () => { const v = prompt('Trigger id that shows this (persist=true once)', o.params.shownByTriggerId || ''); if (v !== null) { o.params.shownByTriggerId = v || undefined; this.pushHistory() } })
     } else if (type === 'portal') {
       y = this.addButton('Set Name', y, () => { const v = prompt('Portal name', o.params.name || 'Portal'); if (v !== null) { o.params.name = v; this.pushHistory() } })
       y = this.addButton('Set Destination Scene', y, () => { const v = prompt('Destination scene (e.g., World)', o.params.destinationScene || 'World'); if (v !== null) { o.params.destinationScene = v; this.pushHistory() } })
       y = this.addButton('Set Destination Id', y, () => { const v = prompt('Destination world id', o.params.destinationId || 'town'); if (v !== null) { o.params.destinationId = v; this.pushHistory() } })
+      // Visibility by trigger
+      y = this.addButton('Hidden By Trigger Id', y, () => { const v = prompt('Trigger id that hides this (persist=true once)', o.params.hiddenByTriggerId || ''); if (v !== null) { o.params.hiddenByTriggerId = v || undefined; this.pushHistory() } })
+      y = this.addButton('Shown By Trigger Id', y, () => { const v = prompt('Trigger id that shows this (persist=true once)', o.params.shownByTriggerId || ''); if (v !== null) { o.params.shownByTriggerId = v || undefined; this.pushHistory() } })
     } else if (type === 'npc') {
       y = this.addButton('Set Name', y, () => { const v = prompt('NPC name', o.params.name || 'NPC'); if (v !== null) { o.params.name = v; this.pushHistory() } })
       // Role presets as prompt list
@@ -526,15 +540,24 @@ export default class PainterScene extends Phaser.Scene {
         const v = prompt('Quest ids that must NOT be completed (comma-separated)', mkList(o.params.requireNotCompleted).join(','))
         if (v !== null) { o.params.requireNotCompleted = v.split(',').map((s: string) => s.trim()).filter(Boolean); this.pushHistory() }
       })
+      // Visibility by trigger
+      y = this.addButton('Hidden By Trigger Id', y, () => { const v = prompt('Trigger id that hides this (persist=true once)', o.params.hiddenByTriggerId || ''); if (v !== null) { o.params.hiddenByTriggerId = v || undefined; this.pushHistory() } })
+      y = this.addButton('Shown By Trigger Id', y, () => { const v = prompt('Trigger id that shows this (persist=true once)', o.params.shownByTriggerId || ''); if (v !== null) { o.params.shownByTriggerId = v || undefined; this.pushHistory() } })
     } else if (type === 'spawner') {
       y = this.addButton('Monster Id', y, () => { const v = prompt('Monster id', o.params.monsterId || 'chaser_basic'); if (v !== null) { o.params.monsterId = v; this.pushHistory() } })
       y = this.addNumControl('Every Ms', Number(o.params.everyMs ?? 1000), (nv) => { o.params.everyMs = nv }, y, 50, 100, 60000)
       y = this.addNumControl('Count', Number(o.params.count ?? 1), (nv) => { o.params.count = nv }, y, 1, 1, 50)
       y = this.addNumControl('Limit', Number(o.params.limit ?? 0), (nv) => { o.params.limit = nv }, y, 1, 0, 9999)
       y = this.addNumControl('Start Delay', Number(o.params.startDelayMs ?? 0), (nv) => { o.params.startDelayMs = nv }, y, 50, 0, 60000)
+      // Visibility by trigger
+      y = this.addButton('Hidden By Trigger Id', y, () => { const v = prompt('Trigger id that hides this (persist=true once)', o.params.hiddenByTriggerId || ''); if (v !== null) { o.params.hiddenByTriggerId = v || undefined; this.pushHistory() } })
+      y = this.addButton('Shown By Trigger Id', y, () => { const v = prompt('Trigger id that shows this (persist=true once)', o.params.shownByTriggerId || ''); if (v !== null) { o.params.shownByTriggerId = v || undefined; this.pushHistory() } })
     } else if (type === 'checkpoint') {
       y = this.addButton('Set Name', y, () => { const v = prompt('Checkpoint name', o.params.name || 'Checkpoint'); if (v !== null) { o.params.name = v; this.pushHistory() } })
-    } else if (type === 'decor') {
+      // Visibility by trigger
+      y = this.addButton('Hidden By Trigger Id', y, () => { const v = prompt('Trigger id that hides this (persist=true once)', o.params.hiddenByTriggerId || ''); if (v !== null) { o.params.hiddenByTriggerId = v || undefined; this.pushHistory() } })
+      y = this.addButton('Shown By Trigger Id', y, () => { const v = prompt('Trigger id that shows this (persist=true once)', o.params.shownByTriggerId || ''); if (v !== null) { o.params.shownByTriggerId = v || undefined; this.pushHistory() } })
+    	} else if (type === 'decor') {
       y = this.addButton('Set Kind', y, () => { const v = prompt('Decor kind (e.g., leaves, crate, banner)', o.params.kind || 'leaves'); if (v !== null) { o.params.kind = v; this.pushHistory() } })
       y = this.addButton('Set Tint (hex)', y, () => {
         const current = (o.params.tint ?? 0xffffff)
@@ -546,8 +569,37 @@ export default class PainterScene extends Phaser.Scene {
             parsed = s.startsWith('#') ? parseInt(s.slice(1), 16) : (s.startsWith('0x') ? parseInt(s.slice(2), 16) : parseInt(s, 16))
           } catch {}
           if (!Number.isNaN(parsed)) { o.params.tint = parsed; try { (o.visual as any).setFillStyle?.(parsed, 0.9) } catch {}; this.pushHistory() }
-        }
+        
+    		}
       })
+      // Visibility by trigger
+      y = this.addButton('Hidden By Trigger Id', y, () => { const v = prompt('Trigger id that hides this (persist=true once)', o.params.hiddenByTriggerId || ''); if (v !== null) { o.params.hiddenByTriggerId = v || undefined; this.pushHistory() } })
+      y = this.addButton('Shown By Trigger Id', y, () => { const v = prompt('Trigger id that shows this (persist=true once)', o.params.shownByTriggerId || ''); if (v !== null) { o.params.shownByTriggerId = v || undefined; this.pushHistory() } })
+    }else if (type === 'trigger') {
+    } else if (type === 'obstacle') {
+      // Visibility by trigger for obstacles
+      y = this.addButton('Hidden By Trigger Id', y, () => { const v = prompt('Trigger id that hides this (persist=true once)', o.params?.hiddenByTriggerId || ''); if (v !== null) { o.params.hiddenByTriggerId = v || undefined; this.pushHistory() } })
+      y = this.addButton('Shown By Trigger Id', y, () => { const v = prompt('Trigger id that shows this (persist=true once)', o.params?.shownByTriggerId || ''); if (v !== null) { o.params.shownByTriggerId = v || undefined; this.pushHistory() } })
+			// Id
+			y = this.addButton(`Id: ${o.params.id || '(auto)'}`, y, () => { const v = prompt('Trigger id (optional, used for persistence)', o.params.id || ''); if (v !== null) { o.params.id = v || undefined; this.pushHistory() } })
+			// Ref module
+			y = this.addButton(`Ref: ${o.params.ref || '(unset)'}`, y, () => { const v = prompt('Trigger ref (module under src/triggers/, e.g., door_open)', o.params.ref || 'door_open'); if (v !== null) { o.params.ref = v; this.pushHistory() } })
+			// Params JSON
+			y = this.addButton('Params (JSON)', y, () => {
+				const cur = JSON.stringify(o.params.params || {}, null, 2)
+				const v = prompt('Enter params JSON', cur)
+				if (v !== null) { try { o.params.params = JSON.parse(v) } catch {}; this.pushHistory() }
+			})
+			// Width/Height
+			y = this.addNumControl('Width', Number(o.params.width ?? this.gridSize), (nv) => { o.params.width = nv; try { (o.visual as any)?.setSize?.(nv, Number(o.params.height ?? this.gridSize)); (o.visual as any)?.setDisplaySize?.(nv, Number(o.params.height ?? this.gridSize)) } catch {} }, y, this.gridSize, 8, 4096)
+			y = this.addNumControl('Height', Number(o.params.height ?? this.gridSize), (nv) => { o.params.height = nv; try { (o.visual as any)?.setSize?.(Number(o.params.width ?? this.gridSize), nv); (o.visual as any)?.setDisplaySize?.(Number(o.params.width ?? this.gridSize), nv) } catch {} }, y, this.gridSize, 8, 4096)
+			// Once toggle
+			y = this.addButton(`Once: ${o.params.once ? 'Yes' : 'No'}`, y, () => { o.params.once = !o.params.once; this.refreshInspector(); this.pushHistory() })
+			// Persist toggle (only effective when once is true)
+			y = this.addButton(`Persist: ${o.params.persist ? 'Yes' : 'No'}`, y, () => { o.params.persist = !o.params.persist; this.refreshInspector(); this.pushHistory() })
+      // Visibility by trigger
+      y = this.addButton('Hidden By Trigger Id', y, () => { const v = prompt('Trigger id that hides this (persist=true once)', o.params.hiddenByTriggerId || ''); if (v !== null) { o.params.hiddenByTriggerId = v || undefined; this.pushHistory() } })
+      y = this.addButton('Shown By Trigger Id', y, () => { const v = prompt('Trigger id that shows this (persist=true once)', o.params.shownByTriggerId || ''); if (v !== null) { o.params.shownByTriggerId = v || undefined; this.pushHistory() } })
     }
     // Delete
     y = this.addButton('Delete', y + 4, () => this.removeSelected())
@@ -566,7 +618,7 @@ export default class PainterScene extends Phaser.Scene {
   private exportJson(): void {
     const out: WorldConfig = { id: this.world.id, name: this.world.name, width: this.world.width, height: this.world.height, portals: [], npcs: [], obstacles: [], spawners: [], checkpoints: [] }
     for (const o of this.objects) {
-      if (o.def.type === 'obstacle') out.obstacles!.push({ x: o.x, y: o.y })
+      if (o.def.type === 'obstacle') out.obstacles!.push({ x: o.x, y: o.y, hiddenByTriggerId: o.params?.hiddenByTriggerId, shownByTriggerId: o.params?.shownByTriggerId })
       if (o.def.type === 'light') (out as any).lights = [ ...(out as any).lights || [], { x: o.x, y: o.y, ...(o.params || {}) } ]
       if (o.def.type === 'portal') out.portals.push({ id: `portal_${out.portals.length+1}`, name: o.params?.name || 'Portal', destinationScene: o.params?.destinationScene || 'World', destinationId: o.params?.destinationId || 'town', x: o.x, y: o.y })
       if (o.def.type === 'npc') out.npcs.push({ id: `npc_${out.npcs.length+1}`, name: o.params?.name || 'NPC', role: o.params?.role || 'shopkeeper', x: o.x, y: o.y, brainId: o.params?.brainId, params: { ...(o.params?.brainParams || {}), requireActive: o.params?.requireActive, requireCompleted: o.params?.requireCompleted, requireNotActive: o.params?.requireNotActive, requireNotCompleted: o.params?.requireNotCompleted }, conversationBundles: Array.isArray(o.params?.conversationBundles) ? o.params?.conversationBundles : undefined } as any)
@@ -574,6 +626,7 @@ export default class PainterScene extends Phaser.Scene {
       if (o.def.type === 'checkpoint') (out as any).checkpoints = [ ...(out as any).checkpoints || [], { x: o.x, y: o.y, name: o.params?.name } ]
       if (o.def.type === 'decor') (out as any).decor = [ ...(out as any).decor || [], { x: o.x, y: o.y, ...(o.params || {}) } ]
       if (o.def.type === 'start') (out as any).start = { x: o.x, y: o.y }
+			if (o.def.type === 'trigger') (out as any).triggers = [ ...(out as any).triggers || [], { id: String(o.params?.id || `trigger_${((out as any).triggers || []).length+1}`), x: o.x, y: o.y, width: Number(o.params?.width ?? this.gridSize), height: Number(o.params?.height ?? this.gridSize), ref: String(o.params?.ref || 'door_open'), params: (o.params?.params || {}), once: !!o.params?.once, persist: !!o.params?.persist } ]
     }
     const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -591,28 +644,31 @@ export default class PainterScene extends Phaser.Scene {
   private rebuildFromSerialized(list: any[]): void {
     this.isRestoring = true
     try {
-      // Clear visuals
-      for (const o of this.objects) { try { (o.visual as any)?.destroy?.() } catch {} }
-      this.objects = []
-      for (const it of list || []) {
-        const def = PALETTE.find(d => d.id === it.defId && d.type === it.type)
-        if (!def) continue
-        this.selection = def
+    // Clear visuals
+    for (const o of this.objects) { try { (o.visual as any)?.destroy?.() } catch {} }
+    this.objects = []
+    for (const it of list || []) {
+      const def = PALETTE.find(d => d.id === it.defId && d.type === it.type)
+      if (!def) continue
+      this.selection = def
         this.placeAt(it.x, it.y, true)
-        const last = this.objects[this.objects.length - 1]
-        last.params = { ...def.defaults, ...(it.params || {}) }
+      const last = this.objects[this.objects.length - 1]
+      last.params = { ...def.defaults, ...(it.params || {}) }
         // Update visual from params when applicable
         try {
-          if (def.type === 'light' && typeof last.params.color === 'number') {
+			if (def.type === 'light' && typeof last.params.color === 'number') {
             ;(last.visual as any)?.setFillStyle?.(last.params.color, 1)
           }
           if (def.type === 'decor' && typeof last.params.tint === 'number') {
             ;(last.visual as any)?.setFillStyle?.(last.params.tint, 0.9)
           }
+			if (def.type === 'trigger') {
+				try { (last.visual as any)?.setDisplaySize?.(Number(last.params.width ?? this.gridSize), Number(last.params.height ?? this.gridSize)) } catch {}
+			}
         } catch {}
-      }
-      this.selected = undefined
-      this.refreshInspector()
+    }
+    this.selected = undefined
+    this.refreshInspector()
     } finally {
       this.isRestoring = false
     }

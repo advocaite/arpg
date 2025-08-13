@@ -66,6 +66,8 @@ export type PortalConfig = {
   destinationId?: string
   x: number
   y: number
+  hiddenByTriggerId?: string
+  shownByTriggerId?: string
 }
 
 export type NpcRole = 'shopkeeper' | 'blacksmith' | 'trainer' | 'healer' | 'questgiver' | 'flavor'
@@ -82,6 +84,8 @@ export type NpcConfig = {
   params?: Record<string, number | string | boolean>
   // Optional list of conversation bundle ids to consider for this NPC
   conversationBundles?: string[]
+  hiddenByTriggerId?: string
+  shownByTriggerId?: string
 }
 
 export type WorldConfig = {
@@ -104,7 +108,7 @@ export type WorldConfig = {
   ambientLight?: number
   portals: PortalConfig[]
   npcs: NpcConfig[]
-  obstacles?: { x: number; y: number }[]
+  obstacles?: ObstacleConfig[]
   spawners?: SpawnerConfig[]
   checkpoints?: CheckpointConfig[]
   // Optional static lights/props (e.g., torches)
@@ -113,6 +117,8 @@ export type WorldConfig = {
   decor?: DecorConfig[]
   // Optional starting spawn point for the player
   start?: { x: number; y: number }
+	// Optional trigger volumes that run code when the player enters
+	triggers?: TriggerConfig[]
 }
 
 export type LightConfig = {
@@ -125,6 +131,9 @@ export type LightConfig = {
   // Optional types: 'point' behaves like torch; 'sky' follows camera to simulate skylight
   type?: 'point' | 'sky'
   followCamera?: boolean
+  // Visibility gating via trigger persistence
+  hiddenByTriggerId?: string
+  shownByTriggerId?: string
 }
 
 export type DecorConfig = {
@@ -132,6 +141,16 @@ export type DecorConfig = {
   y: number
   kind?: string
   tint?: number
+  // Visibility gating via trigger persistence
+  hiddenByTriggerId?: string
+  shownByTriggerId?: string
+}
+
+export type ObstacleConfig = {
+  x: number
+  y: number
+  hiddenByTriggerId?: string
+  shownByTriggerId?: string
 }
 
 export type SpawnerConfig = {
@@ -145,6 +164,8 @@ export type SpawnerConfig = {
   // Optional: enforce or randomize tiers
   tier?: 'normal' | 'champion' | 'rare' | 'unique'
   randomTier?: boolean
+  hiddenByTriggerId?: string
+  shownByTriggerId?: string
 }
 
 export type CheckpointConfig = {
@@ -152,6 +173,26 @@ export type CheckpointConfig = {
   x: number
   y: number
   name?: string
+  hiddenByTriggerId?: string
+  shownByTriggerId?: string
+}
+
+export type TriggerConfig = {
+	id?: string
+	x: number
+	y: number
+	width?: number
+	height?: number
+	// Module reference under src/triggers, e.g., 'door_open' maps to src/triggers/door_open.ts
+	ref: string
+	params?: Record<string, number | string | boolean>
+	// If true, the trigger fires once per character and then persists as consumed
+	once?: boolean
+	// If true with once, consumption is persisted across sessions; if false, once-per-scene only
+	persist?: boolean
+	// Optional gating by other triggers
+	hiddenByTriggerId?: string
+	shownByTriggerId?: string
 }
 
 export type MonsterBehavior = 'chaser' | 'shooter' | 'boss'

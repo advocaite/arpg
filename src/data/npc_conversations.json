@@ -119,9 +119,70 @@
                     ]
                 }
             ]
+        },
+        {
+            "id": "bundle_rumford",
+            "nodes": [{
+                    "id": "gossip_intro",
+                    "type": "gossip",
+                    "title": "Rumford",
+                    "lines": [{ "id": "g1", "text": "Hey there, help me please.", "soundKey": "vo_rumford_hello" }],
+                    "require": { "questNotActiveIds": ["q_kill_one"], "questNotCompletedIds": ["q_kill_one", "q_kill_five"] }
+                },
+                {
+                    "id": "welcome",
+                    "type": "normal",
+                    "title": "Rumford",
+                    "lines": [{ "id": "l1", "text": "Hey there, help me please." }],
+                    "options": [{
+                            "id": "opt_begin",
+                            "label": "I'm ready.",
+                            "grantQuestId": "q_kill_one",
+                            "actions": [
+                                { "ref": "spawnEnemy", "params": { "monsterId": "chaser_basic", "npcId": "npc_Rumford", "dx": 24, "dy": 0 } }
+                            ]
+                        },
+                        {
+                            "id": "opt_turnin1",
+                            "label": "Turn in First Trial",
+                            "completeQuestId": "q_kill_one",
+                            "nextConversationId": "after_trial"
+                        },
+                        { "id": "opt_bye", "label": "Goodbye" }
+                    ]
+                },
+                {
+                    "id": "after_trial",
+                    "type": "normal",
+                    "title": "Rumford",
+                    "lines": [{ "id": "l2", "text": "Face your next trial." }],
+                    "options": [{
+                            "id": "opt_turnin2",
+                            "label": "Turn in Second Trial",
+                            "completeQuestId": "q_kill_five",
+                            "actionRef": "npc.despawn"
+                        },
+                        {
+                            "id": "opt_open",
+                            "label": "Open the way.",
+                            "actions": [
+                                { "ref": "openPortal", "params": { "x": 800, "y": 600, "destinationScene": "World", "destinationId": "arena_world", "durationMs": 12000, "name": "To Arena" } }
+                            ]
+                        },
+                        {
+                            "id": "opt_goodbye",
+                            "label": "Farewell",
+                            "actions": [{ "ref": "setFlag", "params": { "key": "rumford_done", "value": true } }]
+                        },
+                        { "id": "opt_bye2", "label": "Later." }
+                    ],
+                    "require": { "predicateRef": "flag.equals", "predicateParams": { "key": "trial1_done", "value": true } }
+                }
+            ]
         }
     ],
     "npcs": [
-        { "npcId": "npc_Shopkeeper", "bundleId": "bundle_shopkeeper", "gossip": { "radius": 140, "cooldownMs": 10000 } }
+        { "npcId": "npc_Shopkeeper", "bundleId": "bundle_shopkeeper", "gossip": { "radius": 140, "cooldownMs": 10000 } },
+        { "npcId": "npc_Rumford", "bundleId": "bundle_rumford", "gossip": { "radius": 140, "cooldownMs": 8000 } }
     ]
 }

@@ -10,6 +10,10 @@ export type QuestDef = {
   rewards?: { xp?: number; coins?: number; itemId?: string }
   // Whether this quest can be taken again after completion
   repeatable?: boolean
+  // If true, the quest will be automatically handed-in when requirements are met
+  autoHandIn?: boolean
+  onAccept?: { ref: string; params?: Record<string, any> }[]
+  onComplete?: { ref: string; params?: Record<string, any> }[]
 }
 
 export type QuestState = {
@@ -19,6 +23,7 @@ export type QuestState = {
 }
 
 const questDefs: Record<string, QuestDef> = {}
+let __sceneForHooks: Phaser.Scene | undefined
 let __activeCharacterId: number = 0
 
 export function loadQuestDefs(scene: Phaser.Scene): void {
@@ -34,6 +39,8 @@ export function loadQuestDefs(scene: Phaser.Scene): void {
     __activeCharacterId = Number.isFinite(id) ? id : 0
     localStorage.setItem('quests.activeCharId', String(__activeCharacterId))
   } catch {}
+  // Keep a scene reference for auto-handin hooks
+  __sceneForHooks = scene
 }
 
 export function getQuestDef(id: string): QuestDef | undefined { return questDefs[id] }
@@ -79,6 +86,16 @@ export function grantQuest(id: string): void {
   saveState(list)
 }
 
+// Convenience wrapper to grant quest and run onAccept actions
+export function acceptQuest(scene: Phaser.Scene, id: string): void {
+  grantQuest(id)
+  const def = questDefs[id]
+  if (def && Array.isArray(def.onAccept) && def.onAccept.length) {
+    try { import('./ScriptRunner').then(mod => { (mod as any).runActions?.(scene, def.onAccept) }) } catch {}
+  }
+  __sceneForHooks = scene
+}
+
 export function notifyMonsterKilled(monsterId: string): void {
   const list = loadState()
   let changed = false
@@ -91,6 +108,10 @@ export function notifyMonsterKilled(monsterId: string): void {
       if (q.progress >= def.requiredCount) q.completed = true
       try { console.log('[Quests] progress', q.id, q.progress, '/', def.requiredCount, 'completed?', q.completed) } catch {}
       changed = true
+      // Auto hand-in if configured and scene available
+      if (q.completed && def.autoHandIn && __sceneForHooks) {
+        try { completeQuestIfReady(__sceneForHooks, q.id, { onReward: () => { try { ( (__sceneForHooks as any).refreshQuestUI?.() ) } catch {} } }) } catch {}
+      }
     }
   }
   if (changed) saveState(list)
@@ -128,8 +149,30 @@ export function completeQuestIfReady(scene: Phaser.Scene, id: string, opts?: { o
   saveState(list)
   // Record completion for repeatability checks
   addCompleted(id)
+  // onComplete script
+  const def2 = questDefs[id]
+  if (def2 && Array.isArray(def2.onComplete) && def2.onComplete.length) {
+    try { import('./ScriptRunner').then(mod => { (mod as any).runActions?.(scene, def2.onComplete) }) } catch {}
+  }
   opts?.onReward?.(reward as any)
   return true
+}
+
+// Force progress for a specific quest by id (data-driven scripting support)
+export function forceQuestProgress(id: string, delta: number = 1): void {
+  const list = loadState()
+  const idx = list.findIndex(q => q.id === id)
+  if (idx < 0) return
+  const state = list[idx]
+  const def = questDefs[id]
+  if (!def || state.completed) return
+  const add = Math.max(0, Math.floor(delta))
+  state.progress = Math.max(0, Math.min(def.requiredCount, state.progress + add))
+  if (state.progress >= def.requiredCount) state.completed = true
+  saveState(list)
+  if (state.completed && def.autoHandIn && __sceneForHooks) {
+    try { completeQuestIfReady(__sceneForHooks, id, { onReward: () => { try { ( (__sceneForHooks as any).refreshQuestUI?.() ) } catch {} } }) } catch {}
+  }
 }
 
 

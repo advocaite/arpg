@@ -88,6 +88,12 @@ export default class AudioBus {
       t.on('complete', () => { try { this.bgmCombat?.stop(); this.bgmCombat?.destroy(); this.bgmCombat = undefined } catch {} })
     } catch {}
   }
+
+  // Stop and destroy any currently playing BGM stems immediately (used on scene shutdown/teleport)
+  stopAll(): void {
+    try { this.bgmCombat?.stop(); this.bgmCombat?.destroy(); this.bgmCombat = undefined } catch {}
+    try { this.bgm?.stop(); this.bgm?.destroy(); this.bgm = undefined } catch {}
+  }
 }
 
 

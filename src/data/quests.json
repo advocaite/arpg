@@ -39,6 +39,32 @@
             "targetMonsterId": "chaser_basic",
             "requiredCount": 1,
             "rewards": { "xp": 75 }
+        },
+        {
+            "id": "q_kill_one",
+            "name": "First Trial",
+            "description": "Defeat the spawned invader.",
+            "type": "kill",
+            "targetMonsterId": "chaser_basic",
+            "requiredCount": 1,
+            "rewards": { "xp": 25 },
+            "onComplete": [
+                { "ref": "spawnEnemies", "params": { "monsterId": "chaser_basic", "count": 5, "area": { "x": 800, "y": 600, "radius": 120 } } },
+                { "ref": "grantQuest", "params": { "id": "q_kill_five" } },
+                { "ref": "setFlag", "params": { "key": "trial1_done", "value": true } }
+            ]
+        },
+        {
+            "id": "q_kill_five",
+            "name": "Second Trial",
+            "description": "Defeat five invaders.",
+            "type": "kill",
+            "targetMonsterId": "chaser_basic",
+            "requiredCount": 5,
+            "rewards": { "xp": 75 },
+            "onComplete": [
+                { "ref": "playGossip", "params": { "text": "Well done!", "x": 800, "y": 560 } }
+            ]
         }
     ]
 }

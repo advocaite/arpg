@@ -44,6 +44,13 @@
             "x": 1100,
             "y": 600,
             "conversationBundles": ["bundle_town_mentor", "bundle_town_mentor_return"]
+        },
+        {
+            "id": "npc_rumford",
+            "name": "Rumford",
+            "role": "questgiver",
+            "x": 250,
+            "y": 250
         }
     ],
     "obstacles": [{
@@ -216,6 +223,16 @@
             "tint": 8947848
         }
     ],
+    "triggers": [{
+        "id": "shake_demo_1",
+        "x": 816,
+        "y": 400,
+        "width": 96,
+        "height": 96,
+        "ref": "camera_shake",
+        "params": { "intensity": 0.02, "durationMs": 600 },
+        "once": true
+    }],
     "start": {
         "x": 976,
         "y": 656

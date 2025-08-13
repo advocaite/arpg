@@ -87,6 +87,18 @@ export function evaluateConversationPredicate(scene: Phaser.Scene, npc: Phaser.T
   if (typeof fn !== 'function') return true
   try { return !!fn(scene, npc, params || {}) } catch { return false }
 }
+// Built-in predicate: flag check stored in localStorage
+registerConversationPredicate('flag.equals', (_scene, _npc, params) => {
+  try {
+    const key = String((params as any)?.key || '')
+    const want = (params as any)?.value
+    if (!key) return false
+    const raw = localStorage.getItem(`flag.${key}`)
+    if (raw == null) return want == null
+    const got = JSON.parse(raw)
+    return JSON.stringify(got) === JSON.stringify(want)
+  } catch { return false }
+})
 export function openConversation(scene: Phaser.Scene, bundleId: string, startId?: string, npc?: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody): void {
   const bundle = getConversationBundle(bundleId)
   if (!bundle) return
@@ -115,11 +127,17 @@ export function openConversation(scene: Phaser.Scene, bundleId: string, startId?
       return
     }
 
+    // Parse completed log for non-repeatability checks
+    let completedLog: Array<{ id: string; times?: number; lastAt?: number }> = []
+    try { completedLog = JSON.parse(localStorage.getItem(`quests.completed.${charId}`) || '[]') || [] } catch {}
+    const hasCompletedEver = (id?: string) => !!id && completedLog.some(e => e && e.id === id)
+
     const opts = (node.options || [])
       .filter(o => {
-        if (o.grantQuestId && hasQuest(o.grantQuestId)) return false
-        // Keep turn-in options visible as long as the quest exists (active or completed)
-        if (o.completeQuestId && !hasQuest(o.completeQuestId) && !isCompleted(o.completeQuestId)) return false
+        // Show grant option only if not already active or ever completed
+        if (o.grantQuestId && (hasQuest(o.grantQuestId) || hasCompletedEver(o.grantQuestId))) return false
+        // Show complete option only if quest is active (hand-in)
+        if (o.completeQuestId && !(hasQuest(o.completeQuestId))) return false
         return true
       })
       .map(o => ({ label: o.label, onSelect: () => {
@@ -135,7 +153,7 @@ export function openConversation(scene: Phaser.Scene, bundleId: string, startId?
         return
       }
       if (o.grantQuestId) {
-        try { import('@/systems/Quests').then(mod => { console.log('[Convo] grantQuest', o.grantQuestId); (mod as any).grantQuest?.(o.grantQuestId); (scene as any).refreshQuestUI?.() }) } catch {}
+        try { import('@/systems/Quests').then(mod => { console.log('[Convo] acceptQuest', o.grantQuestId); (mod as any).acceptQuest?.(scene, o.grantQuestId); (scene as any).refreshQuestUI?.() }) } catch {}
       }
       if (o.completeQuestId) {
         try {
@@ -157,8 +175,17 @@ export function openConversation(scene: Phaser.Scene, bundleId: string, startId?
         scene.time.delayedCall(10, () => { console.log('[Convo] chaining to', o.nextConversationId); openConversation(scene, bundleId, o.nextConversationId, npc) })
         return
       }
+      // Script actions (data-driven)
+      try {
+        const acts: any[] = (o as any).actions
+        if (Array.isArray(acts) && acts.length) {
+          import('@/systems/ScriptRunner').then(mod => { (mod as any).runActions?.(scene, acts) })
+        }
+      } catch {}
       // If no next, close the dialogue to avoid stacking
       ui.close();
+      // After selection, refresh quest UI and icons promptly
+      try { (scene as any).refreshQuestUI?.() } catch {}
       } finally {
         // Safety: ensure input is re-enabled even if a path above early-returns
         try { (scene as any).uiModalOpen = false; (scene as any).hotbar?.setAllowSkillClick(true) } catch {}
@@ -318,9 +345,9 @@ export function attachGossip(scene: Phaser.Scene, npc: Phaser.Types.Physics.Arca
       const now = Date.now()
       const last = Number(localStorage.getItem(lastSpokenKey) || 0)
       if (inRange && now - last >= cooldown) {
-        // pick a gossip node from bundle (first gossip node)
+        // pick a gossip node from bundle (first gossip node that meets requirements)
         const bundle = getConversationBundle(cfg.bundleId)
-        const node = bundle?.nodes.find(n => n.type === 'gossip')
+        const node = bundle?.nodes.find(n => n.type === 'gossip' && nodeMeetsRequirements(scene, npc, n))
         if (!node) return
         showFloatingText(scene, npc.x, npc.y - 28, node.lines[0]?.text || '...')
         if (node.lines[0]?.soundKey) try { (scene.sound as any).play(node.lines[0].soundKey) } catch {}

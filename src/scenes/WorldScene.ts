@@ -218,6 +218,8 @@ export default class WorldScene extends Phaser.Scene {
 
   async create(): Promise<void> {
     this.cameras.main.setBackgroundColor('#0b0f18')
+    // Stop any prior scene's lingering audio stems (defensive)
+    try { (this as any).__audio?.stopAll?.() } catch {}
     // camera base zoom capture
     try { this.__baseZoom = (this.cameras?.main as any)?.zoom ?? 1 } catch {}
     // PostFX overlays (vignette, grain, fog)
@@ -341,6 +343,18 @@ export default class WorldScene extends Phaser.Scene {
     try {
       if (Array.isArray((this.worldConfig as any)?.obstacles)) {
         for (const o of (this.worldConfig as any).obstacles) {
+          // Visibility toggles via trigger persistence
+          let skip = false
+          try {
+            const charId = String(this.character?.id ?? localStorage.getItem('quests.activeCharId') ?? '0')
+            const firedKey = (id: string) => `triggers.fired.${charId}.${String((this.worldConfig as any)?.id ?? 'world')}.${id}`
+            const hid = (o as any).hiddenByTriggerId
+            const shw = (o as any).shownByTriggerId
+            if (hid && localStorage.getItem(firedKey(String(hid))) === '1') skip = true
+            if (shw && localStorage.getItem(firedKey(String(shw))) !== '1') skip = true
+          } catch {}
+          if (skip) continue
+
           const s = this.physics.add.staticImage(o.x, o.y, 'wall').setAlpha(0.9)
           try { (s as any).refreshBody?.() } catch {}
           try { if ((this.lights as any)?.active) (s as any).setPipeline?.('Light2D') } catch {}
@@ -352,7 +366,14 @@ export default class WorldScene extends Phaser.Scene {
     // Non-colliding decor (visual only)
     try {
       const list: Array<{ x: number; y: number; kind?: string; tint?: number }> = (this.worldConfig as any)?.decor || []
-      for (const d of list) {
+      for (const d of list as any[]) {
+        // Visibility by trigger persistence
+        try {
+          const charId = String(this.character?.id ?? localStorage.getItem('quests.activeCharId') ?? '0')
+          const firedKey = (id: string) => `triggers.fired.${charId}.${String((this.worldConfig as any)?.id ?? 'world')}.${id}`
+          if (d.hiddenByTriggerId && localStorage.getItem(firedKey(String(d.hiddenByTriggerId))) === '1') continue
+          if (d.shownByTriggerId && localStorage.getItem(firedKey(String(d.shownByTriggerId))) !== '1') continue
+        } catch {}
         const tint = typeof d.tint === 'number' ? d.tint : 0x6fbf73
         // Use lightweight shape for now; can switch to sprite atlas later
         const g = this.add.circle(d.x, d.y, 4, tint, 0.9)
@@ -549,6 +570,13 @@ export default class WorldScene extends Phaser.Scene {
 
     // Portals
     for (const p of this.worldConfig.portals) {
+      // Gate by trigger persistence
+      try {
+        const charId = String(this.character?.id ?? localStorage.getItem('quests.activeCharId') ?? '0')
+        const firedKey = (id: string) => `triggers.fired.${charId}.${String((this.worldConfig as any)?.id ?? 'world')}.${id}`
+        if ((p as any).hiddenByTriggerId && localStorage.getItem(firedKey(String((p as any).hiddenByTriggerId))) === '1') continue
+        if ((p as any).shownByTriggerId && localStorage.getItem(firedKey(String((p as any).shownByTriggerId))) !== '1') continue
+      } catch {}
       const s = this.physics.add.sprite(p.x, p.y, 'player').setTint(0x66ffcc)
       s.body.setCircle(12)
       ;(s as any).isInvulnerable = true
@@ -573,7 +601,14 @@ export default class WorldScene extends Phaser.Scene {
     // Static lights (e.g., torches) from world config
     try {
       if ((this.lights as any)?.active && Array.isArray((this.worldConfig as any)?.lights)) {
-        for (const L of (this.worldConfig as any).lights) {
+        for (const L of (this.worldConfig as any).lights as any[]) {
+          // Gate by trigger persistence
+          try {
+            const charId = String(this.character?.id ?? localStorage.getItem('quests.activeCharId') ?? '0')
+            const firedKey = (id: string) => `triggers.fired.${charId}.${String((this.worldConfig as any)?.id ?? 'world')}.${id}`
+            if (L.hiddenByTriggerId && localStorage.getItem(firedKey(String(L.hiddenByTriggerId))) === '1') continue
+            if (L.shownByTriggerId && localStorage.getItem(firedKey(String(L.shownByTriggerId))) !== '1') continue
+          } catch {}
           const color = Number(L.color ?? 0xffaa55)
           const radius = Number(L.radius ?? 200)
           const intensity = Number(L.intensity ?? 1)
@@ -597,7 +632,7 @@ export default class WorldScene extends Phaser.Scene {
       }
     } catch {}
 
-    // NPCs
+		// NPCs
     await loadConversationData(this)
     // Load quest defs and mount tracker
     try {
@@ -629,8 +664,24 @@ export default class WorldScene extends Phaser.Scene {
     } catch {}
 
     for (const n of this.worldConfig.npcs) {
+      // Gate by trigger persistence
+      try {
+        const charId = String(this.character?.id ?? localStorage.getItem('quests.activeCharId') ?? '0')
+        const firedKey = (id: string) => `triggers.fired.${charId}.${String((this.worldConfig as any)?.id ?? 'world')}.${id}`
+        if ((n as any).hiddenByTriggerId && localStorage.getItem(firedKey(String((n as any).hiddenByTriggerId))) === '1') continue
+        if ((n as any).shownByTriggerId && localStorage.getItem(firedKey(String((n as any).shownByTriggerId))) !== '1') continue
+      } catch {}
       // Skip spawning if marked removed in persistence
       if (n.id && this.npcVisibilityState.has(n.id)) continue
+      // Also skip Rumford if quest line is complete (final quest completed) or a completion flag is set
+      try {
+        const charId = String(this.character?.id ?? localStorage.getItem('quests.activeCharId') ?? '0')
+        const completed: Array<{ id: string }> = JSON.parse(localStorage.getItem(`quests.completed.${charId}`) || '[]') || []
+        const hasCompleted = (id: string) => completed.some(e => e.id === id)
+        const isRumford = String(n.name || '').toLowerCase() === 'rumford'
+        const hideRumford = isRumford && (hasCompleted('q_kill_five') || JSON.parse(localStorage.getItem('flag.rumford_done') || 'false') === true)
+        if (hideRumford) continue
+      } catch {}
       const s = this.physics.add.sprite(n.x, n.y, 'player').setTint(0xffcc66)
       s.body.setCircle(12)
       ;(s as any).isInvulnerable = true
@@ -685,7 +736,47 @@ export default class WorldScene extends Phaser.Scene {
       this.updateAllNpcQuestIcons()
     }
 
-    // Colliders & Camera
+		// Triggers (player overlap)
+		try {
+			const triggers = (this.worldConfig as any).triggers || []
+			const devVisible = !(import.meta as any)?.env?.PROD
+			const firedKey = (id: string) => {
+				const charId = String(this.character?.id ?? localStorage.getItem('quests.activeCharId') ?? '0')
+				const worldId = String((this.worldConfig as any)?.id ?? 'world')
+				return `triggers.fired.${charId}.${worldId}.${id}`
+			}
+      for (const t of triggers) {
+        // Gate triggers by other trigger persistence
+        try {
+          const charId = String(this.character?.id ?? localStorage.getItem('quests.activeCharId') ?? '0')
+          const firedKey = (id: string) => `triggers.fired.${charId}.${String((this.worldConfig as any)?.id ?? 'world')}.${id}`
+          if ((t as any).hiddenByTriggerId && localStorage.getItem(firedKey(String((t as any).hiddenByTriggerId))) === '1') continue
+          if ((t as any).shownByTriggerId && localStorage.getItem(firedKey(String((t as any).shownByTriggerId))) !== '1') continue
+        } catch {}
+				const width = Math.max(8, Number(t.width ?? 32))
+				const height = Math.max(8, Number(t.height ?? 32))
+				const id = String(t.id || `${t.ref}:${t.x}:${t.y}`)
+				if (t.once && t.persist) {
+					const done = localStorage.getItem(firedKey(id)) === '1'
+					if (done) continue
+				}
+				const rect = this.add.rectangle(t.x, t.y, width, height, 0xff00ff, devVisible ? 0.12 : 0)
+				rect.setDepth(1)
+				if (devVisible) rect.setStrokeStyle(1, 0xaa33aa, 1)
+				this.physics.add.existing(rect, true)
+				this.physics.add.overlap(this.player, rect as any, async () => {
+					try {
+						const mod = await import('../systems/TriggerRunner')
+						await (mod as any).runTrigger?.(this, String(t.ref || ''), (t.params || {}), { id, x: t.x, y: t.y, width, height })
+						if (t.once && t.persist) localStorage.setItem(firedKey(id), '1')
+						// Disable after firing if once (scene-level)
+						if (t.once) { try { (rect.body as any).enable = false; rect.setVisible(devVisible ? true : false); rect.destroy() } catch {} }
+					} catch (e) { console.warn('[Trigger] run failed', e) }
+				}, undefined, this)
+			}
+		} catch {}
+
+		// Colliders & Camera
     if (ENABLE_WALLS) {
       try {
         const wallsChildren = ((this.walls.getChildren?.() || []) as any[]).filter(c => !!c && !!(c as any).body)
@@ -766,10 +857,12 @@ export default class WorldScene extends Phaser.Scene {
     const payload = { character: this.character }
     console.log('[World] teleport via portal', p.id, 'to', p.destinationScene, p.destinationId)
     if (p.destinationScene === 'World' && p.destinationId) {
+      try { (this as any).__audio?.stopAll?.() } catch {}
       this.scene.start('World', { ...payload, worldId: p.destinationId })
       return
     }
     // Back-compat: jump to legacy scenes if specified
+    try { (this as any).__audio?.stopAll?.() } catch {}
     this.scene.start(p.destinationScene, { ...payload, portalId: p.destinationId })
   }
 
@@ -1459,6 +1552,13 @@ export default class WorldScene extends Phaser.Scene {
 
   private setupSpawners(spawners: SpawnerConfig[]): void {
     for (const s of spawners) {
+      // Gate by trigger persistence
+      try {
+        const charId = String(this.character?.id ?? localStorage.getItem('quests.activeCharId') ?? '0')
+        const firedKey = (id: string) => `triggers.fired.${charId}.${String((this.worldConfig as any)?.id ?? 'world')}.${id}`
+        if ((s as any).hiddenByTriggerId && localStorage.getItem(firedKey(String((s as any).hiddenByTriggerId))) === '1') continue
+        if ((s as any).shownByTriggerId && localStorage.getItem(firedKey(String((s as any).shownByTriggerId))) !== '1') continue
+      } catch {}
       const start = Number(s.startDelayMs ?? 0)
       const every = Math.max(200, Number(s.everyMs || 1000))
       const count = Math.max(1, Number(s.count || 1))

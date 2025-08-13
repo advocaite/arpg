@@ -1,4 +1,4 @@
-export type PlaceableType = 'obstacle' | 'light' | 'portal' | 'npc' | 'decor' | 'spawner' | 'checkpoint' | 'start'
+export type PlaceableType = 'obstacle' | 'light' | 'portal' | 'npc' | 'decor' | 'spawner' | 'checkpoint' | 'start' | 'trigger'
 
 export type PlaceableDef = {
   id: string
@@ -82,6 +82,13 @@ export const PALETTE: PlaceableDef[] = [
     type: 'start',
     label: 'Start Point',
     defaults: {}
+  }
+  ,
+  {
+    id: 'trigger_area',
+    type: 'trigger',
+    label: 'Trigger Area',
+    defaults: { ref: 'door_open', width: 32, height: 32, params: {}, once: true }
   }
 ]
 

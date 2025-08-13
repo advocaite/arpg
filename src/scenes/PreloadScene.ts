@@ -39,17 +39,21 @@ export default class PreloadScene extends Phaser.Scene {
     // VO/SFX preload (place files under /assets/sounds)
     try {
       this.load.audio('vo_gossip_shopkeeper', [
-        'assets/sounds/vo_gossip_shopkeeper.ogg',
-        'assets/sounds/vo_gossip_shopkeeper.mp3'
+        'assets/sounds/vo_gossip_shopkeeper.ogg'
+      ])
+      // Rumford VO (optional; drop files in assets/sounds with these names)
+      this.load.audio('vo_rumford_hello', [
+        'assets/sounds/vo_rumford_hello.ogg'
+
       ])
       // Gameplay SFX (impact, projectile)
       this.load.audio('sfx_impact', [
-        'assets/sounds/impact_01.ogg',
-        'assets/sounds/impact.mp3'
+        'assets/sounds/impact_01.ogg'
+      
       ])
       this.load.audio('sfx_projectile', [
-        'assets/sounds/projectile_01.ogg',
-        'assets/sounds/projectile.mp3'
+        'assets/sounds/projectile_01.ogg'
+     
       ])
     } catch {}
 
