@@ -391,3 +391,7 @@ export type PassiveConfig = {
   powerRef?: string
   params?: Record<string, number | string | boolean>
 }
+
+// Multiplayer additions (kept minimal to avoid refactors)
+export type EntityId = string
+export type NetEntityKind = 'player' | 'enemy' | 'projectile' | 'pickup' | 'npc'

@@ -1,11 +1,16 @@
 import Phaser from 'phaser'
 import { CharacterProfile, CharacterClass, Stats } from '@/types'
 import { loadCharacters, upsertCharacter, deleteCharacter } from '@/systems/SaveSystem'
+import { getNet } from '@/net/instance'
+import { parseInviteFromUrl, setInviteToUrl } from '@/net/invite'
 
 export default class MainMenuScene extends Phaser.Scene {
   private slots: CharacterProfile[] = []
   private ui!: Phaser.GameObjects.Container
   private selectedSlot = 0
+  private net = getNet()
+  private inviteUrlText?: Phaser.GameObjects.Text
+  private statusText?: Phaser.GameObjects.Text
 
   constructor() { super({ key: 'MainMenu' }) }
 
@@ -13,6 +18,40 @@ export default class MainMenuScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#0d0f1a')
     console.log('[MainMenu] create')
     this.slots = this.ensureThreeSlots(loadCharacters())
+
+    // Minimal net client for invites on menu
+    try {
+      const rawUrl = (import.meta as any).env?.VITE_WS_URL || '5177'
+      this.net.setHandlers({
+        onInvite: (msg) => {
+          const txt = `Invite URL copied: ${msg.url}`
+          console.log('[Invite]', msg)
+          this.inviteUrlText?.setText(txt).setVisible(true)
+          try { navigator.clipboard?.writeText(msg.url) } catch {}
+          try { setInviteToUrl(msg.inviteId) } catch {}
+        },
+        onHello: () => {
+          const inviteId = parseInviteFromUrl()
+          if (inviteId) {
+            this.setStatus('Accepting invite...')
+            this.net.acceptInvite(inviteId)
+          }
+        },
+        onError: () => { this.setStatus('WebSocket error. Is server running? (npm run server)') },
+        onEvent: (msg) => {
+          const ev: any = msg.ev
+          if (ev?.t === 'room.accepted') this.setStatus(`Invite accepted by ${ev.name || ev.id}`)
+          if (ev?.t === 'player.joined') this.setStatus(`Player joined: ${ev.name || ev.id}`)
+          if (ev?.t === 'chat') this.setStatus(String(ev.text || ''))
+        }
+      })
+      // Accept invite immediately as well (covers race where hello arrived before handlers were set)
+      const inviteId = parseInviteFromUrl()
+      if (inviteId) {
+        this.setStatus('Accepting invite...')
+        this.net.acceptInvite(inviteId)
+      }
+    } catch {}
 
     this.add.text(this.scale.width / 2, 40, 'ARPG', { fontFamily: 'monospace', color: '#ffffff', fontSize: '28px' }).setOrigin(0.5)
 
@@ -89,10 +128,25 @@ export default class MainMenuScene extends Phaser.Scene {
     const btnDelete = this.add.text(this.scale.width / 2 + 160, this.scale.height - 80, '[ Delete ]', { fontFamily: 'monospace', color: '#faa' }).setOrigin(0.5)
     btnDelete.setInteractive({ useHandCursor: true })
     btnDelete.on('pointerdown', () => this.deleteSlot(this.selectedSlot))
+    const btnInvite = this.add.text(this.scale.width / 2, this.scale.height - 112, '[ Create Invite Link ]', { fontFamily: 'monospace', color: '#7fffd4' }).setOrigin(0.5)
+    btnInvite.setInteractive({ useHandCursor: true })
+    btnInvite.on('pointerdown', () => {
+      try {
+        this.setStatus('Connecting...')
+        this.net.ensureConnected()
+        this.time.delayedCall(50, () => { try { this.net.requestInvite('town') } catch {} })
+      } catch {}
+    })
+    this.inviteUrlText = this.add.text(this.scale.width / 2, this.scale.height - 24, '', { fontFamily: 'monospace', color: '#9acd32' }).setOrigin(0.5).setVisible(false)
+    this.statusText = this.add.text(this.scale.width / 2, this.scale.height - 8, '', { fontFamily: 'monospace', color: '#bbb' }).setOrigin(0.5).setVisible(true)
     const btnResetQuests = this.add.text(this.scale.width / 2, this.scale.height - 48, '[ Reset Quest Data ]', { fontFamily: 'monospace', color: '#ffd166' }).setOrigin(0.5)
     btnResetQuests.setInteractive({ useHandCursor: true })
     btnResetQuests.on('pointerdown', () => this.resetQuestDataForSelected())
-    this.ui.add(btnPlay); this.ui.add(btnCreate); this.ui.add(btnDelete); this.ui.add(btnResetQuests)
+    this.ui.add(btnPlay); this.ui.add(btnCreate); this.ui.add(btnDelete); this.ui.add(btnResetQuests); this.ui.add(btnInvite); this.ui.add(this.inviteUrlText); this.ui.add(this.statusText!)
+  }
+
+  private setStatus(text: string): void {
+    try { this.statusText?.setText(text) } catch {}
   }
 
   private deleteSlot(idx: number): void {
@@ -177,6 +231,7 @@ export default class MainMenuScene extends Phaser.Scene {
     if (!c.name) { this.openCreator(this.selectedSlot); return }
     // Prevent repeated handlers, then start Town directly with a visible cue and a fallback
     this.input.keyboard?.removeAllListeners()
+    try { this.net.join(c.name, 'town', '0.1.0') } catch {}
     const loading = this.add.text(this.scale.width / 2, this.scale.height - 16, 'Loading Town...', { fontFamily: 'monospace', color: '#bbb' }).setOrigin(0.5)
     try { this.scene.start('World', { character: c, worldId: 'town' }); console.log('[MainMenu] scene.start(World) called') } catch (err) { console.error('[MainMenu] start failed', err) }
     // Fallback: if somehow still on this scene after a tick, try again

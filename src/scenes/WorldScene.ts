@@ -29,6 +29,8 @@ import PostFX from '@/postfx/PostFX'
 import AudioBus from '@/systems/AudioBus'
 import HoldAction from '@/ui/HoldAction'
 import { loadConversationData, getConversationBundle, getNpcConversation, attachGossip } from '@/systems/NPCConversations'
+import { getNet } from '@/net/instance'
+import { isMpEnabled } from '@/net/state'
 
 export default class WorldScene extends Phaser.Scene {
   private character?: CharacterProfile
@@ -198,6 +200,11 @@ export default class WorldScene extends Phaser.Scene {
   private weaponFlatDamage = 0
   private bonusMaxHp = 0
   private bgm?: Phaser.Sound.BaseSound
+  private net = getNet()
+  private netText?: Phaser.GameObjects.Text
+  private netGhosts: Map<string, { node: Phaser.GameObjects.Container; tx: number; ty: number }> = new Map()
+  private netEnemyGhosts: Map<string, { node: Phaser.GameObjects.Container; tx: number; ty: number }> = new Map()
+  private __lastGhostLogAtMs: number = 0
   // Camera/Combat feel
   private __inCombatUntil: number = 0
   private __baseZoom: number = 1
@@ -280,6 +287,8 @@ export default class WorldScene extends Phaser.Scene {
     this.coins = savedCoins
     this.coinText = this.add.text(12, 52, `Coins: ${this.coins}` , { fontFamily: 'monospace', color: '#ffd166' }).setScrollFactor(0).setDepth(1000)
     this.manaText = this.add.text(12, 72, `Mana: ${this.mana}`, { fontFamily: 'monospace', color: '#66ccff' }).setScrollFactor(0).setDepth(1000)
+    // Net status UI (optional)
+    this.netText = this.add.text(this.scale.width - 12, 12, '', { fontFamily: 'monospace', color: '#7fffd4' }).setScrollFactor(0).setDepth(1000).setOrigin(1, 0)
     // XP UI
     const barWidth = Math.floor(this.scale.width * 0.6)
     const barHeight = 6
@@ -315,6 +324,148 @@ export default class WorldScene extends Phaser.Scene {
     this.projectiles = this.physics.add.group({ maxSize: 100, allowGravity: false })
     const ENABLE_PROJECTILE_OVERLAP = false // defer registration until after player is created
     this.pickups = this.physics.add.group()
+    
+    // Lightweight client connection for presence; full simulation comes later
+    try {
+      this.net = getNet({
+        onOpen: () => { try { this.netText?.setText('Connected') } catch {} },
+        onClose: () => { try { this.netText?.setText('Disconnected') } catch {} },
+        onSnapshot: (snap) => {
+          try {
+            this.netText?.setText(`Connected • tick ${snap.tick}`)
+            // Render simple ghost players from ents
+            const seen = new Set<string>()
+            const seenEnemies = new Set<string>()
+            for (const e of (snap as any).ents || []) {
+              const id = String(e.id)
+              if (e.kind === 'player') {
+                // Reconcile local player to authoritative state
+                try {
+                  if (this.net && this.net.playerId && id === String(this.net.playerId) && this.player) {
+                    const ax = Number(e.x || this.player.x)
+                    const ay = Number(e.y || this.player.y)
+                    const lerp = 0.35
+                    this.player.setPosition(this.player.x + (ax - this.player.x) * lerp, this.player.y + (ay - this.player.y) * lerp)
+                    continue
+                  }
+                } catch {}
+                try { if (this.net && this.net.playerId && id === String(this.net.playerId)) continue } catch {}
+                seen.add(id)
+                let entry = this.netGhosts.get(id)
+                if (!entry) {
+                  const container = this.add.container(e.x, e.y)
+                  container.setDepth(1200)
+                  const ring = this.add.circle(0, 0, 14, 0x000000, 0)
+                  ring.setStrokeStyle(2, 0x00ffff, 1)
+                  const core = this.add.circle(0, 0, 7, 0x00ffff, 0.9)
+                  const label = this.add.text(0, -22, String(e.meta?.name || 'Player'), { fontFamily: 'monospace', color: '#00ffff' }).setOrigin(0.5)
+                  label.setScrollFactor(1)
+                  container.add([ring, core, label])
+                  try { (container as any).setScrollFactor?.(1) } catch {}
+                  entry = { node: container, tx: e.x, ty: e.y }
+                  this.netGhosts.set(id, entry)
+                }
+                entry.tx = e.x; entry.ty = e.y
+              } else if (e.kind === 'enemy') {
+                seenEnemies.add(id)
+                let entry = this.netEnemyGhosts.get(id)
+                if (!entry) {
+                  const container = this.add.container(e.x, e.y)
+                  container.setDepth(1100)
+                  const ring = this.add.circle(0, 0, 12, 0x000000, 0)
+                  ring.setStrokeStyle(2, 0xff5555, 1)
+                  const core = this.add.circle(0, 0, 6, 0xff5555, 0.85)
+                  const label = this.add.text(0, -18, 'Enemy', { fontFamily: 'monospace', color: '#ff7777' }).setOrigin(0.5)
+                  label.setScrollFactor(1)
+                  container.add([ring, core, label])
+                  try { (container as any).setScrollFactor?.(1) } catch {}
+                  entry = { node: container, tx: e.x, ty: e.y }
+                  this.netEnemyGhosts.set(id, entry)
+                }
+                entry.tx = e.x; entry.ty = e.y
+              } else if (e.kind === 'projectile') {
+                // Render networked projectile as a small cyan dot
+                seenEnemies.add(id) // reuse set to avoid new set
+                let entry = this.netEnemyGhosts.get(id)
+                if (!entry) {
+                  const container = this.add.container(e.x, e.y)
+                  container.setDepth(1150)
+                  const core = this.add.circle(0, 0, 3, 0x88ccff, 1)
+                  container.add([core])
+                  try { (container as any).setScrollFactor?.(1) } catch {}
+                  entry = { node: container, tx: e.x, ty: e.y }
+                  this.netEnemyGhosts.set(id, entry)
+                }
+                entry.tx = e.x; entry.ty = e.y
+              }
+            }
+            for (const [id, obj] of this.netGhosts) { if (!seen.has(id)) { obj.node.destroy(); this.netGhosts.delete(id) } }
+            for (const [id, obj] of this.netEnemyGhosts) { if (!seenEnemies.has(id)) { obj.node.destroy(); this.netEnemyGhosts.delete(id) } }
+            // Debug logging (rate-limited)
+            const now = this.time.now
+            if (!this.__lastGhostLogAtMs || now - this.__lastGhostLogAtMs > 800) {
+              const myId = this.net?.playerId ? String(this.net.playerId) : '(unknown)'
+              const ids = ((snap as any).ents || []).filter((e: any) => e.kind === 'player').map((e: any) => e.id).join(',')
+              console.log('[WorldScene] snapshot', { tick: (snap as any).tick, ents: (snap as any).ents?.length || 0, myId, playerIds: ids })
+              this.__lastGhostLogAtMs = now
+            }
+          } catch {}
+        },
+        onCombat: (msg: any) => {
+          try {
+            if (msg?.t === 'combat' && msg.kind === 'melee') {
+              const g = (this.add as any).graphics({ x: 0, y: 0 })
+              g.fillStyle(0xffaa66, 0.25); g.fillCircle(msg.x, msg.y, msg.radius)
+              this.time.delayedCall(120, () => g.destroy())
+            }
+          } catch {}
+        },
+        onEvent: (msg) => {
+          const ev: any = msg.ev
+          if (ev?.t === 'player.joined') this.netText?.setText(`Online: ${ev.name || ev.id}`)
+          if (ev?.type === 'projectile.hit') {
+            try {
+              const g = (this.add as any).graphics({ x: 0, y: 0 })
+              g.fillStyle(0x88ccff, 0.25); g.fillCircle(ev.x, ev.y, 16)
+              this.time.delayedCall(120, () => g.destroy())
+            } catch {}
+          }
+          if (ev?.type === 'chain.bolt') {
+            try {
+              import('@/systems/Effects').then((fx: any) => {
+                fx.executeEffectByRef?.('fx.lightningBolt', { scene: this, caster: this.player as any }, { x1: ev.x1, y1: ev.y1, x2: ev.x2, y2: ev.y2, color: 0x99ccff, thickness: 2 })
+              })
+            } catch {}
+          }
+          if (ev?.type === 'aoe.tick') {
+            try {
+              const g = (this.add as any).graphics({ x: 0, y: 0 })
+              g.fillStyle(0x55ff77, 0.18); g.fillCircle(ev.x, ev.y, ev.radius || 48)
+              this.time.delayedCall(100, () => g.destroy())
+            } catch {}
+          }
+          if (ev?.type === 'wall.tick') {
+            try {
+              const g = (this.add as any).graphics({ x: 0, y: 0 })
+              g.fillStyle(0xff8844, 0.18)
+              g.fillRect(ev.x - 8, ev.y - 80, 16, 160)
+              this.time.delayedCall(80, () => g.destroy())
+            } catch {}
+          }
+          if (ev?.type === 'cast' && ev.skillId) {
+            // Mirror key effects for remote casts so both tabs see the same visuals
+            const cursor = ev.cursor || { x: this.player.x + this.lastMoveDir.x * 100, y: this.player.y + this.lastMoveDir.y * 100 }
+            const casterId = String(ev.from || '')
+            const localId = this.net?.playerId ? String(this.net.playerId) : ''
+            const casterNode = casterId && casterId !== localId ? (this.netGhosts.get(casterId)?.node || null) : null
+            const sourceX = casterNode ? casterNode.x : this.player.x
+            const sourceY = casterNode ? casterNode.y : this.player.y
+            try { import('@/net/skillFxMap').then((m: any) => m.playCastFx(this, { x: sourceX, y: sourceY }, String(ev.skillId), cursor, ev.params || {})) } catch {}
+          }
+          try { console.log('[WorldScene] event', ev) } catch {}
+        }
+      })
+    } catch {}
 
     const ENABLE_WALLS = true
     if (ENABLE_WALLS) {
@@ -583,6 +734,8 @@ export default class WorldScene extends Phaser.Scene {
       this.add.text(p.x, p.y - 30, p.name, { fontFamily: 'monospace', color: '#aaf' }).setOrigin(0.5)
       this.portals.push({ sprite: s, cfg: p })
       this.physics.add.overlap(this.player, s, () => this.teleport(p))
+      // Also notify server for MP room/world sync
+      this.physics.add.overlap(this.player, s, () => { try { this.net?.send({ t: 'portal.enter', portalId: (p as any).id, destinationId: String(p.destinationId || this.worldId) } as any) } catch {} })
       // Portal visual effect (oval vortex) – choose theme by destinationId
       try {
         const fx = await import('@/systems/Effects')
@@ -810,8 +963,9 @@ export default class WorldScene extends Phaser.Scene {
     // bind overview to O
     this.input.keyboard?.on('keydown-O', () => { if (!this.uiModalOpen) this.openSkillsOverview() })
 
-    // Spawners from config (optional)
-    this.setupSpawners(this.worldConfig.spawners || [])
+    // Spawners from config (optional). Disabled in MP for server authority.
+    const mpEnabled = isMpEnabled()
+    if (!mpEnabled) this.setupSpawners(this.worldConfig.spawners || [])
 
     // Checkpoints (optional)
     this.setupCheckpoints(this.worldConfig.checkpoints || [])
@@ -934,6 +1088,8 @@ export default class WorldScene extends Phaser.Scene {
 
     const moveX = (right ? 1 : 0) - (left ? 1 : 0)
     const moveY = (down ? 1 : 0) - (up ? 1 : 0)
+    // Send input to server (prediction enabled locally)
+    try { this.net?.sendInput(delta, { up, down, left, right, dash: this.shiftKey.isDown }) } catch {}
     const len = Math.hypot(moveX, moveY)
     // Dash + movement
     this.tryDash(moveX, moveY)
@@ -941,7 +1097,43 @@ export default class WorldScene extends Phaser.Scene {
       if (len > 0) { const nx = moveX / len, ny = moveY / len; this.player.setVelocity(nx * this.baseMoveSpeed, ny * this.baseMoveSpeed); this.lastMoveDir.set(nx, ny) } else { this.player.setVelocity(0, 0) }
     }
 
-    if (!this.uiModalOpen && Phaser.Input.Keyboard.JustDown(this.cursors.space!)) this.performAttack()
+    if (!this.uiModalOpen && Phaser.Input.Keyboard.JustDown(this.cursors.space!)) {
+      const mp = isMpEnabled()
+      if (mp) {
+        // Predict swing locally for feedback
+        try {
+          import('@/systems/Powers').then((mod: any) => {
+            const exec = mod.executePowerByRef
+            if (typeof exec === 'function') {
+              const baseDx = this.lastMoveDir.x || 1
+              const baseDy = this.lastMoveDir.y || 0
+              const ang = Math.atan2(baseDy, baseDx)
+              exec('melee.swing', { scene: this, caster: this.player as any, enemies: this.enemies }, { skill: { id: 'melee.swing', name: 'Melee', type: 'projectile' } as any, params: { offset: this.attackRangeOffset, angle: ang, damage: 0, durationMs: 100, isCrit: false } })
+            }
+          })
+        } catch {}
+        try {
+          console.log('[WorldScene] sending cast melee.swing')
+          this.net?.cast('melee.swing', this.time.now)
+        } catch (e) { console.warn('[WorldScene] cast send failed', e) }
+      } else {
+        this.performAttack()
+      }
+    }
+    // Smooth ghost interpolation toward last received targets
+    try {
+      const alpha = Math.min(1, (delta / 16) * 0.25) // ~4 ticks to reach target
+      for (const [, g] of this.netGhosts) {
+        const nx = g.node.x + (g.tx - g.node.x) * alpha
+        const ny = g.node.y + (g.ty - g.node.y) * alpha
+        g.node.setPosition(nx, ny)
+      }
+      for (const [, g] of this.netEnemyGhosts) {
+        const nx = g.node.x + (g.tx - g.node.x) * alpha
+        const ny = g.node.y + (g.ty - g.node.y) * alpha
+        g.node.setPosition(nx, ny)
+      }
+    } catch {}
     // Camera combat zoom handling
     try {
       const cm = this.cameras.main as any
@@ -1011,54 +1203,65 @@ export default class WorldScene extends Phaser.Scene {
         const cd = Number(skill.cooldownMs ?? 600)
         const runeId = (this.hotbarCfg.runeRefIds || [])[i]
         const manaCost = this.getSkillManaCost(skill, runeId)
-        if (this.mana < manaCost) continue
+        if (this.mana < manaCost) {
+          if (isMpEnabled()) {
+            try { this.net?.send({ t: 'cast', seq: 0, skillId: 'melee.swing', atMs: this.time.now } as any) } catch {}
+          }
+          continue
+        }
         this.mana = Math.max(0, this.mana - manaCost)
         this.manaText?.setText(`Mana: ${this.mana}`)
         this.skillCooldownUntil[i] = nowTs + cd
         try { this.hotbar?.startCooldown('slot', i, cd) } catch {}
         const ptr = this.input.activePointer
-        executeSkill(
-          skill,
-          {
-            scene: this,
-            caster: this.player as any,
-            cursor: { x: ptr.worldX, y: ptr.worldY },
-            projectiles: this.projectiles,
-            enemies: this.enemies,
-            onAoeDamage: (x, y, radius, damage, _opts) => {
-              // Damage enemies in radius
-              this.enemies.children.iterate((child): boolean => {
-                const e = child as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody | undefined
-                if (!e || !e.body) return true
-                const dx = e.x - x, dy = e.y - y
-                if (Math.hypot(dx, dy) <= radius) {
-                  const hp = Number(e.getData('hp') || 1)
-                  const newHp = Math.max(0, hp - damage)
-                  e.setData('hp', newHp)
-                  const t = this.add.text(e.x, e.y - 10, `${damage}`, { fontFamily: 'monospace', color: '#77ff77' }).setDepth(900)
-                  this.tweens.add({ targets: t, y: e.y - 26, alpha: 0, duration: 350, onComplete: () => t.destroy() })
-                   if (newHp <= 0) {
-                    try { console.log('[Kill] AoE death', { source: 'onAoeDamage', monsterId: String(e.getData('configId')||''), level: e.getData('level'), radius, damage }) } catch {}
-                    // Award XP and persist when kills happen via AoE
-                    this.gainExperience(Math.max(1, Math.floor((Number(e.getData('level') || 1) + 1) * 5)))
-                    // Quest notify + tracker refresh
-                    try { notifyMonsterKilled(String(e.getData('configId') || '')); (this as any).refreshQuestUI?.() } catch {}
-                    // Drop system
-                    try {
-                      const anyScene: any = this
-                      if (!anyScene.__dropUtil) { import('@/systems/DropSystem').then(mod => { anyScene.__dropUtil = mod }) }
-                      const util = anyScene.__dropUtil
-                      if (util?.playerKillDrop) util.playerKillDrop(anyScene, e.x, e.y, 0.1)
-                    } catch {}
-                    e.destroy()
+        const cursor = { x: ptr.worldX, y: ptr.worldY }
+        if (isMpEnabled()) {
+          try { executeSkill(skill, { scene: this, caster: this.player as any, cursor, projectiles: this.projectiles, enemies: this.enemies }, { runeId }) } catch {}
+          try { this.net?.send({ t: 'cast', seq: 0, skillId: skill.id, atMs: this.time.now, cursor } as any) } catch {}
+        } else {
+          executeSkill(
+            skill,
+            {
+              scene: this,
+              caster: this.player as any,
+              cursor,
+              projectiles: this.projectiles,
+              enemies: this.enemies,
+              onAoeDamage: (x, y, radius, damage, _opts) => {
+                // Damage enemies in radius
+                this.enemies.children.iterate((child): boolean => {
+                  const e = child as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody | undefined
+                  if (!e || !e.body) return true
+                  const dx = e.x - x, dy = e.y - y
+                  if (Math.hypot(dx, dy) <= radius) {
+                    const hp = Number(e.getData('hp') || 1)
+                    const newHp = Math.max(0, hp - damage)
+                    e.setData('hp', newHp)
+                    const t = this.add.text(e.x, e.y - 10, `${damage}`, { fontFamily: 'monospace', color: '#77ff77' }).setDepth(900)
+                    this.tweens.add({ targets: t, y: e.y - 26, alpha: 0, duration: 350, onComplete: () => t.destroy() })
+                     if (newHp <= 0) {
+                      try { console.log('[Kill] AoE death', { source: 'onAoeDamage', monsterId: String(e.getData('configId')||''), level: e.getData('level'), radius, damage }) } catch {}
+                      // Award XP and persist when kills happen via AoE
+                      this.gainExperience(Math.max(1, Math.floor((Number(e.getData('level') || 1) + 1) * 5)))
+                      // Quest notify + tracker refresh
+                      try { notifyMonsterKilled(String(e.getData('configId') || '')); (this as any).refreshQuestUI?.() } catch {}
+                      // Drop system
+                      try {
+                        const anyScene: any = this
+                        if (!anyScene.__dropUtil) { import('@/systems/DropSystem').then(mod => { anyScene.__dropUtil = mod }) }
+                        const util = anyScene.__dropUtil
+                        if (util?.playerKillDrop) util.playerKillDrop(anyScene, e.x, e.y, 0.1)
+                      } catch {}
+                      e.destroy()
+                    }
                   }
-                }
-                return true
-              })
-            }
-          },
-          { runeId }
-        )
+                  return true
+                })
+              }
+            },
+            { runeId }
+          )
+        }
       }
     }
 
@@ -1093,7 +1296,9 @@ export default class WorldScene extends Phaser.Scene {
       }
     }
 
-    // NPC brains tick
+    // NPC brains tick (disabled in MP)
+    const mpEnabledRuntime = isMpEnabled()
+    if (!mpEnabledRuntime) {
     try {
       const anyScene: any = this
       if (!anyScene.__npcBrainTick) {
@@ -1118,7 +1323,9 @@ export default class WorldScene extends Phaser.Scene {
       }
     } catch {}
 
-    // Enemy brains tick + touch damage
+    }
+    // Enemy brains tick + touch damage (disabled in MP)
+    if (!mpEnabledRuntime) {
     this.enemies.children.iterate((child): boolean => {
       const enemy = child as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody | undefined
       if (!enemy || !enemy.body) return true
@@ -1195,6 +1402,7 @@ export default class WorldScene extends Phaser.Scene {
       }
       return true
     })
+    }
 
     // Magnet pickups (gold/globes)
     this.pickups.children.iterate((child): boolean => {
@@ -1637,6 +1845,8 @@ export default class WorldScene extends Phaser.Scene {
     this.isDashing = true; this.dashEndAtMs = now + dashDurationMs; this.dashCooldownEndAtMs = now + dashCooldownMs
     this.player.setVelocity(dir.x * dashSpeed, dir.y * dashSpeed); this.player.setTint(0xaadfff)
     this.time.delayedCall(dashDurationMs, () => { this.isDashing = false; this.player.setTint(0x55ccff) })
+    // Notify server in MP to apply authoritative dash impulse
+    try { if (isMpEnabled()) this.net?.send({ t: 'cast', seq: 0, skillId: 'movement.dash', atMs: now } as any) } catch {}
   }
 
   private tryTalk(): void {
@@ -1827,19 +2037,65 @@ export default class WorldScene extends Phaser.Scene {
     const runeId = (this.hotbarCfg as any).primaryRuneRefId
     const ptr = pointer || this.input.activePointer
     const cursor = { x: ptr.worldX, y: ptr.worldY }
-    if (!id) { this.castFallbackMelee(cursor); return }
+    if (!id) {
+      if (isMpEnabled()) {
+        // Predict FX only, and send cast to server
+        try {
+          import('@/systems/Powers').then((mod: any) => {
+            const exec = mod.executePowerByRef
+            if (typeof exec === 'function') {
+              const dx = cursor.x - this.player.x, dy = cursor.y - this.player.y
+              const ang = Math.atan2(dy, dx)
+              exec('melee.swing', { scene: this, caster: this.player as any, enemies: this.enemies }, { skill: { id: 'melee.swing', name: 'Melee', type: 'projectile' } as any, params: { offset: this.attackRangeOffset, angle: ang, damage: 0, durationMs: 100, isCrit: false } })
+            }
+          })
+        } catch {}
+        try { this.net?.cast('melee.swing', this.time.now) } catch {}
+      } else {
+        this.castFallbackMelee(cursor)
+      }
+      return
+    }
     const skill = getSkill(id)
     if (!skill) { this.castFallbackMelee(cursor); return }
     const now = this.time.now
     if (now < this.primaryCooldownUntil) return
     const cd = Number(skill.cooldownMs ?? 600)
     const manaCost = this.getSkillManaCost(skill, runeId)
-    if (this.mana < manaCost) { this.castFallbackMelee(cursor); return }
+    if (this.mana < manaCost) {
+      if (isMpEnabled()) {
+        try { this.net?.cast('melee.swing', this.time.now) } catch {}
+      } else {
+        this.castFallbackMelee(cursor)
+      }
+      return
+    }
     this.mana = Math.max(0, this.mana - manaCost)
     this.manaText?.setText(`Mana: ${this.mana}`)
     this.primaryCooldownUntil = now + cd
     // Provide cursor to powers that need precise direction (e.g., projectile.shoot)
-    executeSkill(skill, { scene: this, caster: this.player as any, cursor, projectiles: this.projectiles, enemies: this.enemies }, { runeId })
+    if (isMpEnabled()) {
+      // Merge params with rune overrides for server hinting
+      const mergedParams: any = { ...(skill.params || {}) }
+      try {
+        const runes: any[] = (skill as any).runes || []
+        const r = runes.find((rr: any) => rr?.id === runeId)
+        if (r?.params) Object.assign(mergedParams, r.params)
+      } catch {}
+      // Include cast angle for directional skills (walls, cones, etc.)
+      try {
+        const adx = cursor.x - this.player.x, ady = cursor.y - this.player.y
+        mergedParams.angle = Math.atan2(ady, adx)
+      } catch {}
+      // Predict visuals locally; send cast with cursor to server
+      try { executeSkill(skill, { scene: this, caster: this.player as any, cursor, projectiles: this.projectiles, enemies: this.enemies }, { runeId }) } catch {}
+      try {
+        console.log('[WorldScene] send cast', skill.id, cursor)
+        this.net?.send({ t: 'cast', seq: 0, skillId: skill.id, atMs: this.time.now, cursor, skillType: (skill as any).type, params: mergedParams } as any)
+      } catch {}
+    } else {
+      executeSkill(skill, { scene: this, caster: this.player as any, cursor, projectiles: this.projectiles, enemies: this.enemies }, { runeId })
+    }
     try { this.hotbar?.startCooldown('primary', 0, cd) } catch {}
   }
 
@@ -1855,11 +2111,22 @@ export default class WorldScene extends Phaser.Scene {
     const cursor = { x: ptr.worldX, y: ptr.worldY }
     const cd = Number(skill.cooldownMs ?? 600)
     const manaCost = this.getSkillManaCost(skill, runeId)
-    if (this.mana < manaCost) return
+    if (this.mana < manaCost) {
+      if (isMpEnabled()) {
+        try { this.net?.send({ t: 'cast', seq: 0, skillId: 'melee.swing', atMs: this.time.now } as any) } catch {}
+      }
+      return
+    }
     this.mana = Math.max(0, this.mana - manaCost)
     this.manaText?.setText(`Mana: ${this.mana}`)
     this.secondaryCooldownUntil = now + cd
-    executeSkill(skill, { scene: this, caster: this.player as any, cursor, projectiles: this.projectiles, enemies: this.enemies }, { runeId })
+    if (isMpEnabled()) {
+      // Predict visuals locally and send cast
+      try { executeSkill(skill, { scene: this, caster: this.player as any, cursor, projectiles: this.projectiles, enemies: this.enemies }, { runeId }) } catch {}
+      try { this.net?.send({ t: 'cast', seq: 0, skillId: skill.id, atMs: this.time.now, cursor } as any) } catch {}
+    } else {
+      executeSkill(skill, { scene: this, caster: this.player as any, cursor, projectiles: this.projectiles, enemies: this.enemies }, { runeId })
+    }
     try { this.hotbar?.startCooldown('secondary', 0, cd) } catch {}
   }
 
